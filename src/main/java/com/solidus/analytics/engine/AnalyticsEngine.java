@@ -1,18 +1,23 @@
 package com.solidus.analytics.engine;
 
+import com.solidus.analytics.AnalyticsConfig;
 import com.solidus.analytics.SolidusAnalyticsMod;
 import com.solidus.analytics.integration.SolidusIntegration;
+import com.solidus.analytics.license.LicenseVerifier;
+import com.solidus.analytics.premium.DiscordWebhookNotifier;
+import com.solidus.analytics.premium.EconomyHealthScore;
+import com.solidus.analytics.premium.FraudDetector;
 import com.solidus.analytics.storage.AnalyticsDatabase;
 
 import java.nio.file.Path;
+import java.util.concurrent.TimeUnit;
 
 /**
  * AnalyticsEngine - Central coordinator for the Solidus Analytics subsystem.
  *
  * <p>Owns and coordinates all analytics components: the database, live metrics
- * tracker, snapshot scheduler, and inflation calculator. Follows the same
- * architectural pattern as Solidus Core's EconomyEngine — lightweight construction
- * with heavy initialization in a separate {@link #initialize()} call.</p>
+ * tracker, snapshot scheduler, inflation calculator, and premium features
+ * (license verifier, health score, fraud detector, Discord notifier).</p>
  *
  * <h3>Lifecycle:</h3>
  * <ol>
@@ -36,12 +41,23 @@ import java.nio.file.Path;
  */
 public class AnalyticsEngine {
 
+    // ── Core Components ─────────────────────────────────────
+
     private AnalyticsDatabase database;
     private LiveMetricsTracker liveMetrics;
     private SnapshotScheduler snapshotScheduler;
     private InflationCalculator inflationCalculator;
+    private AnalyticsConfig config;
+
+    // ── Premium Components ──────────────────────────────────
+
+    private LicenseVerifier licenseVerifier;
+    private EconomyHealthScore healthScore;
+    private FraudDetector fraudDetector;
+    private DiscordWebhookNotifier discordNotifier;
 
     private volatile boolean initialized = false;
+    private volatile boolean premiumEnabled = false;
 
     /** Whether the Solidus API integration is available */
     private volatile boolean apiIntegrationAvailable = false;
@@ -49,6 +65,12 @@ public class AnalyticsEngine {
     /** Paths to the Solidus databases */
     private String economyDbPath;
     private String auctionsDbPath;
+
+    /** Tick counter for periodic cleanup */
+    private int cleanupTickCounter = 0;
+
+    /** How often to run data cleanup (in ticks: 720000 = ~10 hours) */
+    private static final int CLEANUP_INTERVAL_TICKS = 720_000;
 
     public AnalyticsEngine() {
         // Construction is lightweight; actual work happens in initialize()
@@ -63,12 +85,16 @@ public class AnalyticsEngine {
     public void initialize(String configDir) {
         SolidusAnalyticsMod.LOGGER.info("Initializing Solidus Analytics Engine...");
 
-        // ── Step 1: Initialize Solidus API integration ──
+        Path configDirPath = Path.of(configDir);
+
+        // ── Step 1: Load configuration ──
+        config = new AnalyticsConfig(configDirPath);
+        config.load();
+
+        // ── Step 2: Initialize Solidus API integration ──
         apiIntegrationAvailable = SolidusIntegration.initialize();
 
-        // ── Step 2: Resolve database paths ──
-        // The Solidus databases are in the server's run directory under config/solidus/
-        // We need to read them for analytics queries
+        // ── Step 3: Resolve database paths ──
         Path solidusConfigDir = Path.of(".").toAbsolutePath().resolve("config").resolve("solidus");
         economyDbPath = solidusConfigDir.resolve("economy.db").toAbsolutePath().toString();
         auctionsDbPath = solidusConfigDir.resolve("auctions.db").toAbsolutePath().toString();
@@ -76,25 +102,67 @@ public class AnalyticsEngine {
         SolidusAnalyticsMod.LOGGER.info("Economy DB path: {}", economyDbPath);
         SolidusAnalyticsMod.LOGGER.info("Auctions DB path: {}", auctionsDbPath);
 
-        // ── Step 3: Initialize analytics database ──
+        // ── Step 4: Initialize analytics database ──
         database = new AnalyticsDatabase(configDir);
         database.initialize();
 
-        // ── Step 4: Initialize live metrics tracker ──
+        if (!database.isInitialized()) {
+            SolidusAnalyticsMod.LOGGER.error("Analytics database failed to initialize. Engine will not start.");
+            return;
+        }
+
+        // ── Step 5: Initialize live metrics tracker ──
         liveMetrics = new LiveMetricsTracker(database, economyDbPath);
         liveMetrics.start();
 
-        // ── Step 5: Initialize snapshot scheduler ──
+        // ── Step 6: Initialize snapshot scheduler ──
         snapshotScheduler = new SnapshotScheduler(database, economyDbPath, auctionsDbPath);
 
-        // ── Step 6: Initialize inflation calculator ──
+        // ── Step 7: Initialize inflation calculator ──
         inflationCalculator = new InflationCalculator(database, economyDbPath, auctionsDbPath);
+
+        // ── Step 8: Initialize premium features ──
+        initializePremium(configDirPath);
 
         initialized = true;
         SolidusAnalyticsMod.LOGGER.info("Solidus Analytics Engine initialized successfully.");
         SolidusAnalyticsMod.LOGGER.info("API Integration: {} | Mode: {}",
             apiIntegrationAvailable ? "ACTIVE" : "UNAVAILABLE",
             apiIntegrationAvailable ? "Full Integration" : "Standalone (DB-only)");
+        SolidusAnalyticsMod.LOGGER.info("Premium Features: {}", premiumEnabled ? "ENABLED" : "DISABLED");
+    }
+
+    /**
+     * Initializes premium features (license verification, health score, fraud detector, Discord).
+     */
+    private void initializePremium(Path configDir) {
+        // Initialize license verifier
+        licenseVerifier = new LicenseVerifier(configDir);
+
+        licenseVerifier.initialize().thenAccept(state -> {
+            premiumEnabled = licenseVerifier.isPremiumEnabled();
+
+            if (premiumEnabled) {
+                SolidusAnalyticsMod.LOGGER.info("Premium license verified. Activating premium features...");
+
+                // Initialize premium components
+                healthScore = new EconomyHealthScore(this);
+                fraudDetector = new FraudDetector(this, economyDbPath);
+                discordNotifier = new DiscordWebhookNotifier();
+
+                // Configure Discord notifier from config
+                if (config.isDiscordEnabled()) {
+                    discordNotifier.configure(config.getDiscordWebhookUrl(), true);
+                    discordNotifier.setNotifyFraud(config.isNotifyFraud());
+                    discordNotifier.setNotifyInflation(config.isNotifyInflation());
+                    discordNotifier.setNotifyDailySummary(config.isNotifyDailySummary());
+                    discordNotifier.setNotifyHealthScore(config.isNotifyHealthScore());
+                    discordNotifier.setHealthScoreThreshold(config.getHealthScoreAlertThreshold());
+                }
+            } else {
+                SolidusAnalyticsMod.LOGGER.info("No valid premium license. Premium features disabled.");
+            }
+        });
     }
 
     /**
@@ -111,6 +179,14 @@ public class AnalyticsEngine {
             liveMetrics.stop();
         }
 
+        // Shut down premium components
+        if (licenseVerifier != null) {
+            licenseVerifier.shutdown();
+        }
+        if (discordNotifier != null) {
+            discordNotifier.shutdown();
+        }
+
         // Close the analytics database (flushes and closes connection)
         if (database != null) {
             database.shutdown();
@@ -124,7 +200,7 @@ public class AnalyticsEngine {
 
     /**
      * Called on every server tick. Delegates to sub-components that need
-     * periodic scheduling (e.g., snapshot scheduler).
+     * periodic scheduling (e.g., snapshot scheduler, cleanup).
      *
      * @param currentTick The current server tick count
      */
@@ -133,6 +209,15 @@ public class AnalyticsEngine {
 
         if (snapshotScheduler != null) {
             snapshotScheduler.onTick(currentTick);
+        }
+
+        // Periodic data cleanup
+        cleanupTickCounter++;
+        if (cleanupTickCounter >= CLEANUP_INTERVAL_TICKS) {
+            cleanupTickCounter = 0;
+            if (database != null && config != null) {
+                database.getExecutor().submit(() -> database.runCleanup(config.getDataRetentionDays()));
+            }
         }
     }
 
@@ -156,6 +241,32 @@ public class AnalyticsEngine {
     public InflationCalculator getInflationCalculator() {
         ensureInitialized();
         return inflationCalculator;
+    }
+
+    public AnalyticsConfig getConfig() {
+        return config;
+    }
+
+    // ── Premium Accessors ──────────────────────────────────
+
+    public boolean isPremiumEnabled() {
+        return premiumEnabled;
+    }
+
+    public LicenseVerifier getLicenseVerifier() {
+        return licenseVerifier;
+    }
+
+    public EconomyHealthScore getHealthScore() {
+        return healthScore;
+    }
+
+    public FraudDetector getFraudDetector() {
+        return fraudDetector;
+    }
+
+    public DiscordWebhookNotifier getDiscordNotifier() {
+        return discordNotifier;
     }
 
     public boolean isApiIntegrationAvailable() {

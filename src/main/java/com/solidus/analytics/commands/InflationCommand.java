@@ -50,38 +50,57 @@ public class InflationCommand {
         );
     }
 
+    // ── Console-Safe Feedback ────────────────────────────
+
+    /**
+     * Sends a message to the command source, supporting both in-game players
+     * and the server console. When executed by a player, the rich Component
+     * (with colors and styling) is sent via {@code sendSystemMessage}. When
+     * executed from the console, the message is sent as plain text via
+     * {@code sendSuccess} so formatting degrades gracefully.
+     */
+    private static void sendFeedback(CommandSourceStack source, Component message) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            player.sendSystemMessage(message);
+        } catch (com.mojang.brigadier.exceptions.CommandSyntaxException e) {
+            // Console execution — send as plain text
+            source.sendSuccess(() -> message, false);
+        }
+    }
+
     private static int executeInflation(CommandContext<CommandSourceStack> context, AnalyticsEngine engine, String period) {
-        ServerPlayer player = context.getSource().getPlayerOrException();
+        CommandSourceStack source = context.getSource();
         InflationCalculator calculator = engine.getInflationCalculator();
 
-        player.sendSystemMessage(styledBold("═══════ Inflation Report ═══════", ChatFormatting.GOLD));
+        sendFeedback(source, styledBold("═══════ Inflation Report ═══════", ChatFormatting.GOLD));
 
         calculator.calculateAsync().thenAccept(report -> {
-            player.server.execute(() -> {
+            source.getServer().execute(() -> {
                 // Money supply
-                player.sendSystemMessage(
+                sendFeedback(source,
                     styled("  Money Supply: ", ChatFormatting.GRAY)
                         .append(currency(report.formatMoneySupply())));
 
                 // Goods value
-                player.sendSystemMessage(
+                sendFeedback(source,
                     styled("  Goods Value: ", ChatFormatting.GRAY)
                         .append(currency(report.formatGoodsValue())));
 
                 // Money-to-Goods ratio
                 ChatFormatting ratioColor = getRatioColor(report.moneyToGoodsRatio);
-                player.sendSystemMessage(
+                sendFeedback(source,
                     styled("  Money:Goods Ratio: ", ChatFormatting.GRAY)
                         .append(styled(report.formatRatio(), ratioColor)));
 
                 // Economic status
                 ChatFormatting statusColor = getStatusColor(report.status);
-                player.sendSystemMessage(
+                sendFeedback(source,
                     styled("  Economic Status: ", ChatFormatting.GRAY)
                         .append(styledBold(report.status, statusColor)));
 
                 // Period-specific inflation rate
-                player.sendSystemMessage(styledBold("  ── Inflation Rate ──", ChatFormatting.DARK_AQUA));
+                sendFeedback(source, styledBold("  ── Inflation Rate ──", ChatFormatting.DARK_AQUA));
 
                 Double rate = switch (period) {
                     case "7d" -> report.inflationRate7d;
@@ -96,35 +115,35 @@ public class InflationCommand {
                 };
 
                 ChatFormatting rateColor = getRateColor(rate);
-                player.sendSystemMessage(
+                sendFeedback(source,
                     styled("    " + periodLabel + ": ", ChatFormatting.GRAY)
                         .append(styled(report.formatRate(rate), rateColor)));
 
                 // Also show all periods for reference
                 if (!period.equals("24h")) {
-                    player.sendSystemMessage(
+                    sendFeedback(source,
                         styled("    24h: ", ChatFormatting.DARK_GRAY)
                             .append(styled(report.formatRate(report.inflationRate24h), ChatFormatting.DARK_GRAY)));
                 }
                 if (!period.equals("7d")) {
-                    player.sendSystemMessage(
+                    sendFeedback(source,
                         styled("    7d:  ", ChatFormatting.DARK_GRAY)
                             .append(styled(report.formatRate(report.inflationRate7d), ChatFormatting.DARK_GRAY)));
                 }
                 if (!period.equals("30d")) {
-                    player.sendSystemMessage(
+                    sendFeedback(source,
                         styled("    30d: ", ChatFormatting.DARK_GRAY)
                             .append(styled(report.formatRate(report.inflationRate30d), ChatFormatting.DARK_GRAY)));
                 }
 
                 // Interpretation help
-                player.sendSystemMessage(styledBold("  ── Reference ──", ChatFormatting.DARK_AQUA));
-                player.sendSystemMessage(styled("    Ratio < 2:1 = Deflation", ChatFormatting.AQUA));
-                player.sendSystemMessage(styled("    Ratio 2-5:1 = Healthy", ChatFormatting.GREEN));
-                player.sendSystemMessage(styled("    Ratio 5-10:1 = Moderate Inflation", ChatFormatting.YELLOW));
-                player.sendSystemMessage(styled("    Ratio > 10:1 = Inflation Warning", ChatFormatting.RED));
+                sendFeedback(source, styledBold("  ── Reference ──", ChatFormatting.DARK_AQUA));
+                sendFeedback(source, styled("    Ratio < 2:1 = Deflation", ChatFormatting.AQUA));
+                sendFeedback(source, styled("    Ratio 2-5:1 = Healthy", ChatFormatting.GREEN));
+                sendFeedback(source, styled("    Ratio 5-10:1 = Moderate Inflation", ChatFormatting.YELLOW));
+                sendFeedback(source, styled("    Ratio > 10:1 = Inflation Warning", ChatFormatting.RED));
 
-                player.sendSystemMessage(styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
+                sendFeedback(source, styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
             });
         });
 

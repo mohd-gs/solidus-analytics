@@ -195,8 +195,14 @@ public class AnalyticsDatabase {
             SolidusAnalyticsMod.LOGGER.info("Analytics database initialized successfully.");
 
         } catch (SQLException e) {
-            SolidusAnalyticsMod.LOGGER.error("CRITICAL: Failed to initialize analytics database!", e);
-            throw new RuntimeException("Solidus Analytics database initialization failed", e);
+            SolidusAnalyticsMod.LOGGER.error("CRITICAL: Failed to initialize analytics database! "
+                + "Analytics will be disabled.", e);
+            // Do NOT throw RuntimeException — that would crash the entire server.
+            // Instead, leave initialized=false so the mod gracefully disables.
+            if (persistentConnection != null) {
+                try { persistentConnection.close(); } catch (SQLException ignored) {}
+                persistentConnection = null;
+            }
         }
     }
 
@@ -518,6 +524,97 @@ public class AnalyticsDatabase {
             }
         }
         return metrics;
+    }
+
+    // ── Data Retention / Cleanup ───────────────────────────
+
+    /**
+     * Deletes snapshots older than the specified number of days.
+     * Called periodically to prevent unbounded database growth.
+     *
+     * @param retentionDays Number of days to retain (e.g., 90 keeps 3 months)
+     * @return The number of deleted rows, or -1 on error
+     */
+    public int cleanupOldSnapshots(int retentionDays) {
+        ensureInitialized();
+        long cutoffTimestamp = System.currentTimeMillis() - ((long) retentionDays * 86_400_000L);
+        String sql = "DELETE FROM analytics_snapshots WHERE timestamp < ?";
+        synchronized (connectionLock) {
+            try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
+                ps.setLong(1, cutoffTimestamp);
+                int deleted = ps.executeUpdate();
+                if (deleted > 0) {
+                    SolidusAnalyticsMod.LOGGER.info("Cleaned up {} snapshots older than {} days.", deleted, retentionDays);
+                }
+                return deleted;
+            } catch (SQLException e) {
+                SolidusAnalyticsMod.LOGGER.error("Failed to cleanup old snapshots", e);
+                return -1;
+            }
+        }
+    }
+
+    /**
+     * Deletes daily metrics older than the specified number of days.
+     *
+     * @param retentionDays Number of days to retain
+     * @return The number of deleted rows, or -1 on error
+     */
+    public int cleanupOldDailyMetrics(int retentionDays) {
+        ensureInitialized();
+        String cutoffDate = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
+            .minusDays(retentionDays).toString();
+        String sql = "DELETE FROM analytics_daily_metrics WHERE date < ?";
+        synchronized (connectionLock) {
+            try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
+                ps.setString(1, cutoffDate);
+                int deleted = ps.executeUpdate();
+                if (deleted > 0) {
+                    SolidusAnalyticsMod.LOGGER.info("Cleaned up {} daily metrics older than {} days.", deleted, retentionDays);
+                }
+                return deleted;
+            } catch (SQLException e) {
+                SolidusAnalyticsMod.LOGGER.error("Failed to cleanup old daily metrics", e);
+                return -1;
+            }
+        }
+    }
+
+    /**
+     * Deletes item metrics older than the specified number of days.
+     *
+     * @param retentionDays Number of days to retain
+     * @return The number of deleted rows, or -1 on error
+     */
+    public int cleanupOldItemMetrics(int retentionDays) {
+        ensureInitialized();
+        String cutoffDate = java.time.LocalDate.now(java.time.ZoneOffset.UTC)
+            .minusDays(retentionDays).toString();
+        String sql = "DELETE FROM analytics_item_metrics WHERE date < ?";
+        synchronized (connectionLock) {
+            try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
+                ps.setString(1, cutoffDate);
+                int deleted = ps.executeUpdate();
+                if (deleted > 0) {
+                    SolidusAnalyticsMod.LOGGER.info("Cleaned up {} item metrics older than {} days.", deleted, retentionDays);
+                }
+                return deleted;
+            } catch (SQLException e) {
+                SolidusAnalyticsMod.LOGGER.error("Failed to cleanup old item metrics", e);
+                return -1;
+            }
+        }
+    }
+
+    /**
+     * Runs all cleanup operations with the specified retention period.
+     *
+     * @param retentionDays Number of days to retain data
+     */
+    public void runCleanup(int retentionDays) {
+        cleanupOldSnapshots(retentionDays);
+        cleanupOldDailyMetrics(retentionDays);
+        cleanupOldItemMetrics(retentionDays);
     }
 
     // ── Executor Access (for async operations) ─────────────

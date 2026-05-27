@@ -415,7 +415,7 @@ public class LiveMetricsTracker {
     private Map<String, Long> getTopEntries(ConcurrentHashMap<String, AtomicLong> map, int limit) {
         Map<String, Long> result = new HashMap<>();
         map.entrySet().stream()
-            .sorted(Comparator.comparingLong(e -> -e.getValue().get()))
+            .sorted(Map.Entry.<String, AtomicLong>comparingByValue(Comparator.comparingLong(AtomicLong::get)).reversed())
             .limit(limit)
             .forEach(e -> result.put(e.getKey(), e.getValue().get()));
         return result;

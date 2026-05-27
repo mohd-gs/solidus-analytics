@@ -2,6 +2,7 @@ package com.solidus.analytics;
 
 import com.solidus.analytics.commands.AnalyticsCommand;
 import com.solidus.analytics.commands.InflationCommand;
+import com.solidus.analytics.commands.PremiumCommand;
 import com.solidus.analytics.engine.AnalyticsEngine;
 
 import net.fabricmc.api.DedicatedServerModInitializer;
@@ -91,6 +92,7 @@ public class SolidusAnalyticsMod implements DedicatedServerModInitializer {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             AnalyticsCommand.register(dispatcher, analyticsEngine);
             InflationCommand.register(dispatcher, analyticsEngine);
+            PremiumCommand.register(dispatcher, analyticsEngine);
         });
 
         // Register server shutdown hook

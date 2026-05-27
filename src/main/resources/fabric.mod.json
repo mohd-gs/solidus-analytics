@@ -6,7 +6,7 @@
   "description": "Data analytics engine for Solidus economy — dashboards, inflation tracking, wealth distribution",
   "authors": ["MOHD_Gs"],
   "contact": {},
-  "license": "MIT",
+  "license": "SOLIDUS-ANALYTICS-EULA",
   "environment": "server",
   "entrypoints": {
     "server": [

@@ -83,38 +83,57 @@ public class AnalyticsCommand {
         );
     }
 
+    // ── Console-Safe Feedback ────────────────────────────
+
+    /**
+     * Sends a message to the command source, supporting both in-game players
+     * and the server console. When executed by a player, the rich Component
+     * (with colors and styling) is sent via {@code sendSystemMessage}. When
+     * executed from the console, the message is sent as plain text via
+     * {@code sendSuccess} so formatting degrades gracefully.
+     */
+    private static void sendFeedback(CommandSourceStack source, Component message) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            player.sendSystemMessage(message);
+        } catch (com.mojang.brigadier.exceptions.CommandSyntaxException e) {
+            // Console execution — send as plain text
+            source.sendSuccess(() -> message, false);
+        }
+    }
+
     // ── Subcommand: Dashboard ──────────────────────────────
 
     private static int executeDashboard(CommandContext<CommandSourceStack> context, AnalyticsEngine engine) {
-        ServerPlayer player = context.getSource().getPlayerOrException();
+        CommandSourceStack source = context.getSource();
         LiveMetricsTracker metrics = engine.getLiveMetrics();
 
-        player.sendSystemMessage(styledBold("═══════ Solidus Analytics ═══════", ChatFormatting.GOLD));
-        player.sendSystemMessage(styled("  Live Economy Dashboard", ChatFormatting.YELLOW));
+        sendFeedback(source, styledBold("═══════ Solidus Analytics ═══════", ChatFormatting.GOLD));
+        sendFeedback(source, styled("  Live Economy Dashboard", ChatFormatting.YELLOW));
 
         // Daily volume
-        player.sendSystemMessage(
+        sendFeedback(source,
             styled("  Daily Volume: ", ChatFormatting.GRAY)
                 .append(currency(formatCents(metrics.getDailyVolumeCents()))));
 
         // Transaction count
-        player.sendSystemMessage(
+        sendFeedback(source,
             styled("  Transactions Today: ", ChatFormatting.GRAY)
                 .append(styled(String.valueOf(metrics.getDailyTransactionCount()), ChatFormatting.WHITE)));
 
         // Active players
-        player.sendSystemMessage(
+        sendFeedback(source,
             styled("  Active Players: ", ChatFormatting.GRAY)
                 .append(styled(String.valueOf(metrics.getActivePlayerCount()), ChatFormatting.WHITE)));
 
         // Breakdown by type
         Map<String, Long> typeCounts = metrics.getTransactionsByType();
         if (!typeCounts.isEmpty()) {
-            player.sendSystemMessage(styledBold("  ── Transaction Breakdown ──", ChatFormatting.DARK_AQUA));
+            sendFeedback(source, styledBold("  ── Transaction Breakdown ──", ChatFormatting.DARK_AQUA));
             typeCounts.entrySet().stream()
                 .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
                 .limit(6)
-                .forEach(entry -> player.sendSystemMessage(
+                .forEach(entry -> sendFeedback(source,
                     styled("    " + entry.getKey() + ": ", ChatFormatting.GRAY)
                         .append(styled(String.valueOf(entry.getValue()), ChatFormatting.WHITE))));
         }
@@ -122,130 +141,130 @@ public class AnalyticsCommand {
         // Top bought items
         Map<String, Long> topBought = metrics.getTopBoughtItems(5);
         if (!topBought.isEmpty()) {
-            player.sendSystemMessage(styledBold("  ── Top Bought Items ──", ChatFormatting.DARK_AQUA));
-            topBought.forEach((material, qty) -> player.sendSystemMessage(
+            sendFeedback(source, styledBold("  ── Top Bought Items ──", ChatFormatting.DARK_AQUA));
+            topBought.forEach((material, qty) -> sendFeedback(source,
                 styled("    " + material + ": ", ChatFormatting.GRAY)
                     .append(styled(qty + " units", ChatFormatting.WHITE))));
         }
 
-        player.sendSystemMessage(styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
+        sendFeedback(source, styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
         return 1;
     }
 
     // ── Subcommand: Wealth Distribution ────────────────────
 
     private static int executeWealth(CommandContext<CommandSourceStack> context, AnalyticsEngine engine) {
-        ServerPlayer player = context.getSource().getPlayerOrException();
+        CommandSourceStack source = context.getSource();
         AnalyticsDatabase db = engine.getDatabase();
 
         AnalyticsDatabase.Snapshot latest = db.getLatestSnapshot();
 
-        player.sendSystemMessage(styledBold("═══════ Wealth Distribution ═══════", ChatFormatting.GOLD));
+        sendFeedback(source, styledBold("═══════ Wealth Distribution ═══════", ChatFormatting.GOLD));
 
         if (latest == null) {
-            player.sendSystemMessage(styled("  No snapshot data available yet.", ChatFormatting.GRAY));
-            player.sendSystemMessage(styled("  Snapshots are taken every 30 minutes.", ChatFormatting.GRAY));
-            player.sendSystemMessage(styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
+            sendFeedback(source, styled("  No snapshot data available yet.", ChatFormatting.GRAY));
+            sendFeedback(source, styled("  Snapshots are taken every 30 minutes.", ChatFormatting.GRAY));
+            sendFeedback(source, styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
             return 1;
         }
 
         // Gini coefficient
-        player.sendSystemMessage(
+        sendFeedback(source,
             styled("  Gini Coefficient: ", ChatFormatting.GRAY)
                 .append(styled(String.format("%.4f", latest.giniCoefficient()), ChatFormatting.WHITE))
                 .append(styled(" (" + GiniCoefficient.interpret(latest.giniCoefficient()) + ")", ChatFormatting.YELLOW)));
 
         // Total wealth
-        player.sendSystemMessage(
+        sendFeedback(source,
             styled("  Total Wealth: ", ChatFormatting.GRAY)
                 .append(currency(formatCents(latest.totalWealth()))));
 
         // Player count
-        player.sendSystemMessage(
+        sendFeedback(source,
             styled("  Player Count: ", ChatFormatting.GRAY)
                 .append(styled(String.valueOf(latest.playerCount()), ChatFormatting.WHITE)));
 
         // Average balance
-        player.sendSystemMessage(
+        sendFeedback(source,
             styled("  Average Balance: ", ChatFormatting.GRAY)
                 .append(currency(formatCents(latest.avgBalance()))));
 
         // Median balance
-        player.sendSystemMessage(
+        sendFeedback(source,
             styled("  Median Balance: ", ChatFormatting.GRAY)
                 .append(currency(formatCents(latest.medianBalance()))));
 
         // Top 1% share
-        player.sendSystemMessage(
+        sendFeedback(source,
             styled("  Top 1% Wealth Share: ", ChatFormatting.GRAY)
                 .append(styled(String.format("%.1f%%", latest.top1PercentShare() * 100),
                     latest.top1PercentShare() > 0.3 ? ChatFormatting.RED : ChatFormatting.GREEN)));
 
         // Auction data
-        player.sendSystemMessage(
+        sendFeedback(source,
             styled("  Active Auctions: ", ChatFormatting.GRAY)
                 .append(styled(latest.auctionActiveListings() + " listings ", ChatFormatting.WHITE))
                 .append(currency("(" + formatCents(latest.auctionTotalValue()) + ")")));
 
         // Snapshot timestamp
         long ageSeconds = (System.currentTimeMillis() - latest.timestamp()) / 1000;
-        player.sendSystemMessage(
+        sendFeedback(source,
             styled("  Snapshot age: ", ChatFormatting.GRAY)
                 .append(styled(formatDuration(ageSeconds), ChatFormatting.DARK_GRAY)));
 
-        player.sendSystemMessage(styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
+        sendFeedback(source, styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
         return 1;
     }
 
     // ── Subcommand: Inflation ──────────────────────────────
 
     private static int executeInflation(CommandContext<CommandSourceStack> context, AnalyticsEngine engine) {
-        ServerPlayer player = context.getSource().getPlayerOrException();
+        CommandSourceStack source = context.getSource();
         InflationCalculator calculator = engine.getInflationCalculator();
 
-        player.sendSystemMessage(styledBold("═══════ Inflation Report ═══════", ChatFormatting.GOLD));
+        sendFeedback(source, styledBold("═══════ Inflation Report ═══════", ChatFormatting.GOLD));
 
         // Calculate async and display
         calculator.calculateAsync().thenAccept(report -> {
-            player.server.execute(() -> {
+            source.getServer().execute(() -> {
                 // Money supply
-                player.sendSystemMessage(
+                sendFeedback(source,
                     styled("  Money Supply: ", ChatFormatting.GRAY)
                         .append(currency(report.formatMoneySupply())));
 
                 // Goods value
-                player.sendSystemMessage(
+                sendFeedback(source,
                     styled("  Goods Value: ", ChatFormatting.GRAY)
                         .append(currency(report.formatGoodsValue())));
 
                 // Money-to-Goods ratio
                 ChatFormatting ratioColor = getRatioColor(report.moneyToGoodsRatio);
-                player.sendSystemMessage(
+                sendFeedback(source,
                     styled("  Money:Goods Ratio: ", ChatFormatting.GRAY)
                         .append(styled(report.formatRatio(), ratioColor)));
 
                 // Status
                 ChatFormatting statusColor = getStatusColor(report.status);
-                player.sendSystemMessage(
+                sendFeedback(source,
                     styled("  Status: ", ChatFormatting.GRAY)
                         .append(styledBold(report.status, statusColor)));
 
                 // Inflation rates
-                player.sendSystemMessage(styledBold("  ── Inflation Rates ──", ChatFormatting.DARK_AQUA));
-                player.sendSystemMessage(
+                sendFeedback(source, styledBold("  ── Inflation Rates ──", ChatFormatting.DARK_AQUA));
+                sendFeedback(source,
                     styled("    24h: ", ChatFormatting.GRAY)
                         .append(styled(report.formatRate(report.inflationRate24h),
                             getRateColor(report.inflationRate24h))));
-                player.sendSystemMessage(
+                sendFeedback(source,
                     styled("    7d:  ", ChatFormatting.GRAY)
                         .append(styled(report.formatRate(report.inflationRate7d),
                             getRateColor(report.inflationRate7d))));
-                player.sendSystemMessage(
+                sendFeedback(source,
                     styled("    30d: ", ChatFormatting.GRAY)
                         .append(styled(report.formatRate(report.inflationRate30d),
                             getRateColor(report.inflationRate30d))));
 
-                player.sendSystemMessage(styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
+                sendFeedback(source, styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
             });
         });
 
@@ -255,17 +274,17 @@ public class AnalyticsCommand {
     // ── Subcommand: Top Items ──────────────────────────────
 
     private static int executeTopItems(CommandContext<CommandSourceStack> context, AnalyticsEngine engine) {
-        ServerPlayer player = context.getSource().getPlayerOrException();
+        CommandSourceStack source = context.getSource();
         LiveMetricsTracker metrics = engine.getLiveMetrics();
 
-        player.sendSystemMessage(styledBold("═══════ Top Items ═══════", ChatFormatting.GOLD));
+        sendFeedback(source, styledBold("═══════ Top Items ═══════", ChatFormatting.GOLD));
 
         Map<String, Long> bought = metrics.getTopBoughtItems(10);
         if (!bought.isEmpty()) {
-            player.sendSystemMessage(styledBold("  ── Most Bought ──", ChatFormatting.GREEN));
+            sendFeedback(source, styledBold("  ── Most Bought ──", ChatFormatting.GREEN));
             int rank = 1;
             for (Map.Entry<String, Long> entry : bought.entrySet()) {
-                player.sendSystemMessage(
+                sendFeedback(source,
                     styled("    #" + rank + " ", ChatFormatting.YELLOW)
                         .append(styled(entry.getKey() + ": ", ChatFormatting.WHITE))
                         .append(styled(entry.getValue() + " units", ChatFormatting.GRAY)));
@@ -275,10 +294,10 @@ public class AnalyticsCommand {
 
         Map<String, Long> sold = metrics.getTopSoldItems(10);
         if (!sold.isEmpty()) {
-            player.sendSystemMessage(styledBold("  ── Most Sold ──", ChatFormatting.RED));
+            sendFeedback(source, styledBold("  ── Most Sold ──", ChatFormatting.RED));
             int rank = 1;
             for (Map.Entry<String, Long> entry : sold.entrySet()) {
-                player.sendSystemMessage(
+                sendFeedback(source,
                     styled("    #" + rank + " ", ChatFormatting.YELLOW)
                         .append(styled(entry.getKey() + ": ", ChatFormatting.WHITE))
                         .append(styled(entry.getValue() + " units", ChatFormatting.GRAY)));
@@ -287,45 +306,45 @@ public class AnalyticsCommand {
         }
 
         if (bought.isEmpty() && sold.isEmpty()) {
-            player.sendSystemMessage(styled("  No item data available yet.", ChatFormatting.GRAY));
+            sendFeedback(source, styled("  No item data available yet.", ChatFormatting.GRAY));
         }
 
-        player.sendSystemMessage(styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
+        sendFeedback(source, styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
         return 1;
     }
 
     // ── Subcommand: Top Buyers ─────────────────────────────
 
     private static int executeTopBuyers(CommandContext<CommandSourceStack> context, AnalyticsEngine engine) {
-        ServerPlayer player = context.getSource().getPlayerOrException();
-        player.sendSystemMessage(styledBold("═══════ Top Buyers ═══════", ChatFormatting.GOLD));
-        player.sendSystemMessage(styled("  Feature coming soon — requires transaction volume tracking per player.", ChatFormatting.GRAY));
-        player.sendSystemMessage(styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
+        CommandSourceStack source = context.getSource();
+        sendFeedback(source, styledBold("═══════ Top Buyers ═══════", ChatFormatting.GOLD));
+        sendFeedback(source, styled("  Feature coming soon — requires transaction volume tracking per player.", ChatFormatting.GRAY));
+        sendFeedback(source, styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
         return 1;
     }
 
     // ── Subcommand: Top Sellers ────────────────────────────
 
     private static int executeTopSellers(CommandContext<CommandSourceStack> context, AnalyticsEngine engine) {
-        ServerPlayer player = context.getSource().getPlayerOrException();
-        player.sendSystemMessage(styledBold("═══════ Top Sellers ═══════", ChatFormatting.GOLD));
-        player.sendSystemMessage(styled("  Feature coming soon — requires transaction volume tracking per player.", ChatFormatting.GRAY));
-        player.sendSystemMessage(styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
+        CommandSourceStack source = context.getSource();
+        sendFeedback(source, styledBold("═══════ Top Sellers ═══════", ChatFormatting.GOLD));
+        sendFeedback(source, styled("  Feature coming soon — requires transaction volume tracking per player.", ChatFormatting.GRAY));
+        sendFeedback(source, styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
         return 1;
     }
 
     // ── Subcommand: Force Snapshot ─────────────────────────
 
     private static int executeSnapshot(CommandContext<CommandSourceStack> context, AnalyticsEngine engine) {
-        ServerPlayer player = context.getSource().getPlayerOrException();
+        CommandSourceStack source = context.getSource();
 
-        player.sendSystemMessage(styled("Taking analytics snapshot...", ChatFormatting.YELLOW));
+        sendFeedback(source, styled("Taking analytics snapshot...", ChatFormatting.YELLOW));
         engine.getSnapshotScheduler().forceSnapshot("MANUAL");
 
         // Note: The snapshot runs asynchronously. Results will be available
         // after a brief delay. We schedule a delayed confirmation message.
-        player.server.execute(() -> {
-            player.sendSystemMessage(styled("Snapshot submitted. Check /analytics wealth for results in a few seconds.", ChatFormatting.GREEN));
+        source.getServer().execute(() -> {
+            sendFeedback(source, styled("Snapshot submitted. Check /analytics wealth for results in a few seconds.", ChatFormatting.GREEN));
         });
 
         return 1;
@@ -334,27 +353,27 @@ public class AnalyticsCommand {
     // ── Subcommand: Export ─────────────────────────────────
 
     private static int executeExport(CommandContext<CommandSourceStack> context, AnalyticsEngine engine) {
-        ServerPlayer player = context.getSource().getPlayerOrException();
+        CommandSourceStack source = context.getSource();
 
-        player.sendSystemMessage(styledBold("═══════ Data Export ═══════", ChatFormatting.GOLD));
-        player.sendSystemMessage(styled("  CSV export feature coming in a future update.", ChatFormatting.GRAY));
-        player.sendSystemMessage(styled("  Current data can be queried directly from analytics.db", ChatFormatting.GRAY));
-        player.sendSystemMessage(styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
+        sendFeedback(source, styledBold("═══════ Data Export ═══════", ChatFormatting.GOLD));
+        sendFeedback(source, styled("  CSV export feature coming in a future update.", ChatFormatting.GRAY));
+        sendFeedback(source, styled("  Current data can be queried directly from analytics.db", ChatFormatting.GRAY));
+        sendFeedback(source, styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
         return 1;
     }
 
     // ── Subcommand: History ────────────────────────────────
 
     private static int executeHistory(CommandContext<CommandSourceStack> context, AnalyticsEngine engine, int days) {
-        ServerPlayer player = context.getSource().getPlayerOrException();
+        CommandSourceStack source = context.getSource();
         AnalyticsDatabase db = engine.getDatabase();
 
         List<AnalyticsDatabase.DailyMetrics> metrics = db.getRecentDailyMetrics(days);
 
-        player.sendSystemMessage(styledBold("═══════ Daily History (" + days + "d) ═══════", ChatFormatting.GOLD));
+        sendFeedback(source, styledBold("═══════ Daily History (" + days + "d) ═══════", ChatFormatting.GOLD));
 
         if (metrics.isEmpty()) {
-            player.sendSystemMessage(styled("  No daily metrics recorded yet.", ChatFormatting.GRAY));
+            sendFeedback(source, styled("  No daily metrics recorded yet.", ChatFormatting.GRAY));
         } else {
             for (AnalyticsDatabase.DailyMetrics day : metrics) {
                 String inflationStr = day.inflationRate() != null
@@ -365,7 +384,7 @@ public class AnalyticsCommand {
                     ? (day.inflationRate() > 0 ? ChatFormatting.RED : ChatFormatting.GREEN)
                     : ChatFormatting.GRAY;
 
-                player.sendSystemMessage(
+                sendFeedback(source,
                     styled("  " + day.date() + " ", ChatFormatting.WHITE)
                         .append(styled(day.transactionCount() + " tx ", ChatFormatting.GRAY))
                         .append(currency(formatCents(day.transactionVolume())))
@@ -374,7 +393,7 @@ public class AnalyticsCommand {
             }
         }
 
-        player.sendSystemMessage(styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
+        sendFeedback(source, styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
         return 1;
     }
 
