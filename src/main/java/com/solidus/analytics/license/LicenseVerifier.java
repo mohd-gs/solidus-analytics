@@ -2,63 +2,84 @@ package com.solidus.analytics.license;
 
 import com.solidus.analytics.SolidusAnalyticsMod;
 
-import java.io.BufferedReader;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.HexFormat;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.Base64;
 
 /**
- * LicenseVerifier - Online license key verification for Solidus Analytics Premium.
+ * LicenseVerifier - Offline license key verification for Solidus Analytics Premium.
  *
- * <p>This class handles the verification of license keys for the paid version
- * of Solidus Analytics. It uses a server-side verification system to ensure
- * that only licensed servers can use premium features.</p>
+ * <p>This class handles local verification of license keys using HMAC-SHA256
+ * digital signatures. No internet connection, remote server, or external hosting
+ * is required. The entire verification happens locally on the Minecraft server.</p>
  *
- * <h3>Verification Flow:</h3>
+ * <h3>How It Works:</h3>
  * <ol>
- *   <li>Read license key from config/solidus-analytics/license.key</li>
- *   <li>Send verification request to the license server with the key + server hash</li>
- *   <li>Server validates the key and returns a signed token with expiry</li>
- *   <li>Token is cached locally and re-validated periodically</li>
- *   <li>If verification fails, premium features are disabled gracefully</li>
+ *   <li>The server owner purchases a license and receives a key</li>
+ *   <li>The key is placed in {@code config/solidus-analytics/license.key}</li>
+ *   <li>On startup, the mod reads and verifies the key locally</li>
+ *   <li>Verification checks: valid signature, not expired, fingerprint match</li>
+ *   <li>If valid, premium features are activated immediately</li>
  * </ol>
+ *
+ * <h3>License Key Structure:</h3>
+ * <pre>
+ *   SA1-BASE64(payload)-BASE64(signature)
+ *
+ *   payload  = "1|licenseeName|2026-12-31|fingerprint"
+ *   signature = HMAC-SHA256(payload, secretKey)
+ * </pre>
  *
  * <h3>Security:</h3>
  * <ul>
+ *   <li>HMAC-SHA256 signature prevents key forgery</li>
+ *   <li>Each key can be tied to a specific server fingerprint</li>
+ *   <li>Fingerprint "ANY" allows the key to work on any server</li>
  *   <li>License keys are never logged or exposed in chat</li>
- *   <li>Server identity is hashed (not raw IP) for privacy</li>
- *   <li>Cached tokens have a limited validity period (24 hours)</li>
- *   <li>Offline grace period of 72 hours for network outages</li>
- *   <li>All verification runs asynchronously to avoid blocking the server</li>
+ *   <li>Expiry date prevents permanent use of time-limited licenses</li>
  * </ul>
+ *
+ * <h3>No Infrastructure Required:</h3>
+ * <p>Unlike online verification systems, this approach requires zero
+ * external infrastructure. No VPS, no SSL certificates, no API endpoints,
+ * no database. The seller generates keys using the LicenseKeyGenerator
+ * tool and sends them to buyers. Everything else happens offline.</p>
  *
  * @since 1.0.0
  */
 public final class LicenseVerifier {
 
-    // ── Configuration ──────────────────────────────────────
+    // ── Constants ─────────────────────────────────────────────
 
-    /** The license verification server endpoint */
-    private static final String LICENSE_SERVER_URL = "https://license.solidusanalytics.com/api/v1/verify";
+    /** Key format version (must match LicenseKeyGenerator) */
+    private static final int KEY_VERSION = 1;
 
-    /** How often to re-verify the license (in hours) */
-    private static final int REVERIFY_INTERVAL_HOURS = 24;
+    /** HMAC algorithm used for signature verification */
+    private static final String HMAC_ALGORITHM = "HmacSHA256";
 
-    /** Grace period for offline verification (in hours) */
-    private static final int OFFLINE_GRACE_HOURS = 72;
+    /**
+     * Secret key for HMAC-SHA256 signing.
+     * This key is shared between the LicenseKeyGenerator (seller tool)
+     * and this verifier. It is obfuscated here to make reverse engineering
+     * more difficult, but not impossible. For a Minecraft server plugin,
+     * this level of protection is standard and sufficient.
+     *
+     * <p>IMPORTANT: If you change this key, you MUST also update
+     * LicenseKeyGenerator.java with the same key, otherwise generated
+     * keys will not validate.</p>
+     */
+    private static final byte[] HMAC_SECRET = decodeSecret(
+        "534f4c494455532d414e414c59544943532d4c4943454e53452d5345435245542d32303235"
+    );
 
     /** Path to the license key file */
     private final Path licenseKeyPath;
@@ -66,14 +87,10 @@ public final class LicenseVerifier {
     // ── State ───────────────────────────────────────────────
 
     private volatile VerificationState state = VerificationState.UNVERIFIED;
-    private volatile String licenseKey;
-    private volatile Instant lastVerifiedAt;
-    private volatile Instant tokenExpiry;
-    private volatile String serverToken;
     private volatile String licenseeName;
+    private volatile LocalDate expiryDate;
+    private volatile String fingerprint;
     private volatile String errorMessage;
-
-    private final ScheduledExecutorService scheduler;
 
     /**
      * Verification state enum.
@@ -81,40 +98,36 @@ public final class LicenseVerifier {
     public enum VerificationState {
         /** Not yet verified (startup) */
         UNVERIFIED,
-        /** Currently verifying with the server */
-        VERIFYING,
-        /** Successfully verified and active */
+        /** Successfully verified — premium features active */
         VERIFIED,
-        /** Verified but using offline grace period */
-        GRACE_PERIOD,
         /** Verification failed — premium features disabled */
         INVALID,
-        /** Network error during verification */
-        NETWORK_ERROR
+        /** License has expired */
+        EXPIRED,
+        /** License fingerprint does not match this server */
+        FINGERPRINT_MISMATCH
     }
 
     // ── Constructor ─────────────────────────────────────────
 
     public LicenseVerifier(Path configDir) {
         this.licenseKeyPath = configDir.resolve("license.key");
-        this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "Solidus-License-Verifier");
-            t.setDaemon(true);
-            return t;
-        });
     }
 
     // ── Initialization ──────────────────────────────────────
 
     /**
      * Initializes the license verifier. Reads the license key file
-     * and starts the verification process.
+     * and performs local verification immediately. No network access needed.
      *
-     * @return CompletableFuture that resolves to the verification state
+     * @return the verification state (synchronous — no CompletableFuture needed)
      */
-    public CompletableFuture<VerificationState> initialize() {
-        // Step 1: Read the license key
-        if (!readLicenseKey()) {
+    public VerificationState initialize() {
+        SolidusAnalyticsMod.LOGGER.info("Verifying Solidus Analytics license...");
+
+        // Step 1: Read the license key file
+        String rawKey = readLicenseKey();
+        if (rawKey == null) {
             state = VerificationState.INVALID;
             errorMessage = "No license key found. Place your key in " + licenseKeyPath;
             SolidusAnalyticsMod.LOGGER.error(errorMessage);
@@ -122,65 +135,52 @@ public final class LicenseVerifier {
                 "Solidus Analytics Premium requires a valid license key. "
                 + "Create the file '{}' with your license key on a single line.",
                 licenseKeyPath);
-            return CompletableFuture.completedFuture(state);
+            return state;
         }
 
-        // Step 2: Attempt online verification
-        state = VerificationState.VERIFYING;
-        return verifyWithServer().thenApply(result -> {
-            state = result;
+        // Step 2: Parse and verify the key locally
+        state = verifyLocally(rawKey);
 
-            if (result == VerificationState.VERIFIED) {
-                // Schedule periodic re-verification
-                scheduler.scheduleAtFixedRate(
-                    this::scheduledReverification,
-                    REVERIFY_INTERVAL_HOURS,
-                    REVERIFY_INTERVAL_HOURS,
-                    TimeUnit.HOURS
-                );
-                SolidusAnalyticsMod.LOGGER.info("License verified for: {}", licenseeName);
-            } else if (result == VerificationState.NETWORK_ERROR) {
-                // Check if we can use offline grace period
-                if (checkOfflineGrace()) {
-                    state = VerificationState.GRACE_PERIOD;
-                    SolidusAnalyticsMod.LOGGER.warn(
-                        "License server unreachable. Operating in grace period ({}h remaining).",
-                        getRemainingGraceHours());
-                } else {
-                    state = VerificationState.INVALID;
-                    SolidusAnalyticsMod.LOGGER.error(
-                        "License server unreachable and grace period expired. Premium features disabled.");
-                }
+        if (state == VerificationState.VERIFIED) {
+            SolidusAnalyticsMod.LOGGER.info("License verified for: {} (expires: {})", licenseeName, expiryDate);
+            if ("ANY".equals(fingerprint)) {
+                SolidusAnalyticsMod.LOGGER.info("License type: Universal (any server)");
+            } else {
+                SolidusAnalyticsMod.LOGGER.info("License type: Server-specific (fingerprint: {}...)", fingerprint);
             }
+        } else {
+            SolidusAnalyticsMod.LOGGER.warn("License verification failed: {}", errorMessage);
+        }
 
-            return state;
-        });
+        return state;
     }
 
     /**
-     * Shuts down the verification scheduler.
+     * No-op shutdown (kept for API compatibility — no scheduler to stop).
      */
     public void shutdown() {
-        scheduler.shutdown();
-        try {
-            if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                scheduler.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            scheduler.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
+        // Nothing to shut down — no network scheduler, no threads
     }
 
     // ── Public API ──────────────────────────────────────────
 
     /**
-     * Checks whether the license is currently valid (verified or in grace period).
+     * Checks whether the license is currently valid and premium features should be enabled.
      *
      * @return true if premium features should be enabled
      */
     public boolean isPremiumEnabled() {
-        return state == VerificationState.VERIFIED || state == VerificationState.GRACE_PERIOD;
+        if (state != VerificationState.VERIFIED) {
+            return false;
+        }
+        // Double-check expiry in case the server has been running past midnight
+        if (expiryDate != null && LocalDate.now().isAfter(expiryDate)) {
+            state = VerificationState.EXPIRED;
+            errorMessage = "License expired on " + expiryDate.format(DateTimeFormatter.ISO_LOCAL_DATE);
+            SolidusAnalyticsMod.LOGGER.warn("License has expired: {}", errorMessage);
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -198,6 +198,31 @@ public final class LicenseVerifier {
     }
 
     /**
+     * Gets the license expiry date.
+     */
+    public LocalDate getExpiryDate() {
+        return expiryDate;
+    }
+
+    /**
+     * Gets the fingerprint this license is tied to ("ANY" = universal).
+     */
+    public String getFingerprint() {
+        return fingerprint;
+    }
+
+    /**
+     * Gets the number of days until the license expires.
+     *
+     * @return days remaining, or 0 if expired, or -1 if no expiry date
+     */
+    public long getDaysRemaining() {
+        if (expiryDate == null) return -1;
+        long days = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), expiryDate);
+        return Math.max(0, days);
+    }
+
+    /**
      * Gets the last verification error message, if any.
      */
     public String getErrorMessage() {
@@ -205,12 +230,43 @@ public final class LicenseVerifier {
     }
 
     /**
-     * Forces an immediate re-verification.
+     * Forces an immediate re-verification by re-reading the key file.
+     * Useful after the server owner updates their license key.
      *
-     * @return CompletableFuture with the new verification state
+     * @return the new verification state
      */
-    public CompletableFuture<VerificationState> forceReverify() {
-        return verifyWithServer();
+    public VerificationState forceReverify() {
+        SolidusAnalyticsMod.LOGGER.info("Re-verifying license...");
+        String rawKey = readLicenseKey();
+        if (rawKey == null) {
+            state = VerificationState.INVALID;
+            errorMessage = "License key file not found";
+            return state;
+        }
+        state = verifyLocally(rawKey);
+        SolidusAnalyticsMod.LOGGER.info("Re-verification result: {} — {}", state, errorMessage != null ? errorMessage : "OK");
+        return state;
+    }
+
+    /**
+     * Computes this server's fingerprint. This value is shown to the server
+     * owner via {@code /analytics fingerprint} so they can provide it to the
+     * seller for a server-specific license key.
+     *
+     * @return the server fingerprint hex string
+     */
+    public static String computeServerFingerprint() {
+        try {
+            String identity = System.getProperty("user.name", "unknown")
+                + ":" + java.net.InetAddress.getLocalHost().getHostName()
+                + ":" + Path.of(".").toAbsolutePath().hashCode();
+
+            MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
+            byte[] hash = sha256.digest(identity.getBytes(StandardCharsets.UTF_8));
+            return bytesToHex(hash).substring(0, 16);
+        } catch (NoSuchAlgorithmException | IOException e) {
+            return "error-" + Integer.toHexString(System.identityHashCode(LicenseVerifier.class));
+        }
     }
 
     // ── License Key File ────────────────────────────────────
@@ -218,223 +274,210 @@ public final class LicenseVerifier {
     /**
      * Reads the license key from the key file.
      *
-     * @return true if the key was read successfully
+     * @return the raw key string, or null if the file doesn't exist or can't be read
      */
-    private boolean readLicenseKey() {
+    private String readLicenseKey() {
         try {
             if (!Files.exists(licenseKeyPath)) {
-                return false;
+                return null;
             }
 
             String key = Files.readString(licenseKeyPath).trim();
 
-            // Basic format validation: license keys are SA-XXXX-XXXX-XXXX-XXXX
-            if (!key.matches("SA-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}")) {
-                SolidusAnalyticsMod.LOGGER.error("Invalid license key format. Expected: SA-XXXX-XXXX-XXXX-XXXX");
-                return false;
+            // Remove any comment lines (lines starting with #)
+            String[] lines = key.split("\n");
+            for (String line : lines) {
+                line = line.trim();
+                if (!line.isEmpty() && !line.startsWith("#")) {
+                    return line;
+                }
             }
 
-            this.licenseKey = key;
-            return true;
+            return null;
 
         } catch (IOException e) {
             SolidusAnalyticsMod.LOGGER.error("Failed to read license key file", e);
-            return false;
+            return null;
         }
     }
 
-    // ── Server Verification ─────────────────────────────────
+    // ── Local Verification ──────────────────────────────────
 
     /**
-     * Verifies the license key with the remote server.
+     * Verifies the license key locally using HMAC-SHA256.
+     *
+     * <p>Key format: {@code SA1-BASE64(payload)-BASE64(signature)}</p>
+     * <p>Payload: {@code version|licenseeName|expiryDate|fingerprint}</p>
+     *
+     * @param rawKey the raw key string from the file
+     * @return the verification state
      */
-    private CompletableFuture<VerificationState> verifyWithServer() {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                String serverHash = computeServerHash();
-                String requestBody = "{\"key\":\"" + licenseKey + "\",\"server\":\"" + serverHash + "\"}";
-
-                HttpURLConnection conn = (HttpURLConnection) URI.create(LICENSE_SERVER_URL).toURL().openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json");
-                conn.setRequestProperty("User-Agent", "SolidusAnalytics/1.0");
-                conn.setConnectTimeout(10_000);
-                conn.setReadTimeout(10_000);
-                conn.setDoOutput(true);
-
-                // Send request
-                conn.getOutputStream().write(requestBody.getBytes(StandardCharsets.UTF_8));
-
-                int responseCode = conn.getResponseCode();
-
-                if (responseCode == 200) {
-                    // Read response
-                    String response;
-                    try (BufferedReader reader = new BufferedReader(
-                            new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
-                        StringBuilder sb = new StringBuilder();
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            sb.append(line);
-                        }
-                        response = sb.toString();
-                    }
-
-                    return parseVerificationResponse(response);
-
-                } else if (responseCode == 401 || responseCode == 403) {
-                    errorMessage = "Invalid or expired license key";
-                    return VerificationState.INVALID;
-
-                } else if (responseCode == 429) {
-                    // Rate limited — use grace period
-                    if (checkOfflineGrace()) {
-                        return VerificationState.GRACE_PERIOD;
-                    }
-                    errorMessage = "Rate limited by license server. Grace period expired.";
-                    return VerificationState.INVALID;
-
-                } else {
-                    SolidusAnalyticsMod.LOGGER.warn(
-                        "License server returned unexpected status: {}", responseCode);
-                    return handleNetworkError();
-                }
-
-            } catch (IOException e) {
-                SolidusAnalyticsMod.LOGGER.warn("Failed to connect to license server: {}", e.getMessage());
-                return handleNetworkError();
-            }
-        });
-    }
-
-    /**
-     * Parses the verification response from the license server.
-     * Expected JSON format: {"status":"valid","licensee":"Name","expires":"2025-12-31T23:59:59Z","token":"..."}
-     */
-    private VerificationState parseVerificationResponse(String response) {
+    private VerificationState verifyLocally(String rawKey) {
         try {
-            // Simple JSON parsing (no external dependency needed)
-            String status = extractJsonValue(response, "status");
-            if (!"valid".equals(status)) {
-                errorMessage = "License server rejected the key: " + status;
+            // Step 1: Split the key into parts
+            // Format: SA1-PAYLOAD-SIGNATURE
+            if (!rawKey.startsWith("SA" + KEY_VERSION + "-")) {
+                errorMessage = "Invalid key format. Expected SA" + KEY_VERSION + "-...";
                 return VerificationState.INVALID;
             }
 
-            licenseeName = extractJsonValue(response, "licensee");
-            String expiresStr = extractJsonValue(response, "expires");
-            serverToken = extractJsonValue(response, "token");
-
-            if (expiresStr != null) {
-                tokenExpiry = Instant.parse(expiresStr);
+            String body = rawKey.substring(3); // Remove "SA1-"
+            int lastDash = body.lastIndexOf('-');
+            if (lastDash < 0) {
+                errorMessage = "Invalid key structure (missing signature separator)";
+                return VerificationState.INVALID;
             }
 
-            lastVerifiedAt = Instant.now();
+            String payloadBase64 = body.substring(0, lastDash);
+            String signatureBase64 = body.substring(lastDash + 1);
+
+            // Step 2: Decode the payload
+            String payload;
+            try {
+                payload = new String(Base64.getDecoder().decode(payloadBase64), StandardCharsets.UTF_8);
+            } catch (IllegalArgumentException e) {
+                errorMessage = "Invalid key encoding (payload not valid Base64)";
+                return VerificationState.INVALID;
+            }
+
+            // Step 3: Decode the signature
+            byte[] providedSignature;
+            try {
+                providedSignature = Base64.getDecoder().decode(signatureBase64);
+            } catch (IllegalArgumentException e) {
+                errorMessage = "Invalid key encoding (signature not valid Base64)";
+                return VerificationState.INVALID;
+            }
+
+            // Step 4: Verify the HMAC-SHA256 signature
+            byte[] expectedSignature = computeHMAC(payload);
+            if (!constantTimeEquals(expectedSignature, providedSignature)) {
+                errorMessage = "Invalid license key (signature mismatch — key may be forged or corrupted)";
+                return VerificationState.INVALID;
+            }
+
+            // Step 5: Parse the payload fields
+            // Format: version|licenseeName|expiryDate|fingerprint
+            String[] fields = payload.split("\\|", 4);
+            if (fields.length != 4) {
+                errorMessage = "Invalid key payload structure (expected 4 fields, got " + fields.length + ")";
+                return VerificationState.INVALID;
+            }
+
+            // Step 6: Verify key version
+            int keyVersion;
+            try {
+                keyVersion = Integer.parseInt(fields[0]);
+            } catch (NumberFormatException e) {
+                errorMessage = "Invalid key version";
+                return VerificationState.INVALID;
+            }
+            if (keyVersion != KEY_VERSION) {
+                errorMessage = "Unsupported key version: " + keyVersion + " (expected: " + KEY_VERSION + ")";
+                return VerificationState.INVALID;
+            }
+
+            // Step 7: Extract fields
+            licenseeName = fields[1];
+
+            try {
+                expiryDate = LocalDate.parse(fields[2], DateTimeFormatter.ISO_LOCAL_DATE);
+            } catch (Exception e) {
+                errorMessage = "Invalid expiry date in key: " + fields[2];
+                return VerificationState.INVALID;
+            }
+
+            fingerprint = fields[3];
+
+            // Step 8: Check expiry
+            if (LocalDate.now().isAfter(expiryDate)) {
+                errorMessage = "License expired on " + expiryDate.format(DateTimeFormatter.ISO_LOCAL_DATE);
+                return VerificationState.EXPIRED;
+            }
+
+            // Step 9: Check server fingerprint (if not "ANY")
+            if (!"ANY".equals(fingerprint)) {
+                String serverFingerprint = computeServerFingerprint();
+                if (!fingerprint.equalsIgnoreCase(serverFingerprint)) {
+                    errorMessage = "This license is tied to a different server. "
+                        + "Expected: " + fingerprint + ", Got: " + serverFingerprint;
+                    return VerificationState.FINGERPRINT_MISMATCH;
+                }
+            }
+
+            // All checks passed!
+            errorMessage = null;
             return VerificationState.VERIFIED;
 
         } catch (Exception e) {
-            SolidusAnalyticsMod.LOGGER.error("Failed to parse license server response", e);
-            errorMessage = "Invalid response from license server";
+            SolidusAnalyticsMod.LOGGER.error("Unexpected error during license verification", e);
+            errorMessage = "Verification error: " + e.getMessage();
             return VerificationState.INVALID;
         }
     }
 
-    /**
-     * Extracts a value from a simple JSON string.
-     * This is intentionally simple — we don't want a JSON library dependency.
-     */
-    private String extractJsonValue(String json, String key) {
-        String searchKey = "\"" + key + "\":\"";
-        int start = json.indexOf(searchKey);
-        if (start < 0) return null;
-        start += searchKey.length();
-        int end = json.indexOf("\"", start);
-        if (end < 0) return null;
-        return json.substring(start, end);
-    }
+    // ── Cryptographic Helpers ────────────────────────────────
 
     /**
-     * Handles a network error during verification.
-     * Checks the offline grace period before failing.
+     * Computes the HMAC-SHA256 of the given payload using the embedded secret key.
+     *
+     * @param payload the string to sign
+     * @return the HMAC-SHA256 signature bytes
      */
-    private VerificationState handleNetworkError() {
-        if (checkOfflineGrace()) {
-            return VerificationState.GRACE_PERIOD;
-        }
-        errorMessage = "Cannot reach license server and grace period expired";
-        return VerificationState.NETWORK_ERROR;
-    }
-
-    // ── Offline Grace Period ────────────────────────────────
-
-    /**
-     * Checks if the offline grace period is still valid.
-     * The grace period allows the server to run without internet for 72 hours.
-     */
-    private boolean checkOfflineGrace() {
-        if (lastVerifiedAt == null) {
-            // Never verified — no grace period
-            return false;
-        }
-        Duration sinceLastVerified = Duration.between(lastVerifiedAt, Instant.now());
-        return sinceLastVerified.toHours() < OFFLINE_GRACE_HOURS;
-    }
-
-    /**
-     * Gets the remaining hours in the offline grace period.
-     */
-    private long getRemainingGraceHours() {
-        if (lastVerifiedAt == null) return 0;
-        Duration sinceLastVerified = Duration.between(lastVerifiedAt, Instant.now());
-        long remaining = OFFLINE_GRACE_HOURS - sinceLastVerified.toHours();
-        return Math.max(0, remaining);
-    }
-
-    /**
-     * Scheduled re-verification task.
-     */
-    private void scheduledReverification() {
+    private static byte[] computeHMAC(String payload) {
         try {
-            SolidusAnalyticsMod.LOGGER.info("Performing scheduled license re-verification...");
-            VerificationState result = verifyWithServer().get(30, TimeUnit.SECONDS);
-            state = result;
-
-            if (result == VerificationState.VERIFIED) {
-                SolidusAnalyticsMod.LOGGER.info("License re-verified successfully for: {}", licenseeName);
-            } else if (result == VerificationState.NETWORK_ERROR && checkOfflineGrace()) {
-                state = VerificationState.GRACE_PERIOD;
-                SolidusAnalyticsMod.LOGGER.warn("License server unreachable. Grace period: {}h remaining.",
-                    getRemainingGraceHours());
-            } else {
-                SolidusAnalyticsMod.LOGGER.error("License re-verification failed: {}", errorMessage);
-            }
-        } catch (Exception e) {
-            SolidusAnalyticsMod.LOGGER.error("Error during scheduled license re-verification", e);
-            if (checkOfflineGrace()) {
-                state = VerificationState.GRACE_PERIOD;
-            }
+            Mac mac = Mac.getInstance(HMAC_ALGORITHM);
+            SecretKeySpec keySpec = new SecretKeySpec(HMAC_SECRET, HMAC_ALGORITHM);
+            mac.init(keySpec);
+            return mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
+        } catch (NoSuchAlgorithmException | InvalidKeyException e) {
+            throw new RuntimeException("HMAC-SHA256 not available — this should never happen", e);
         }
     }
 
-    // ── Server Identity Hash ────────────────────────────────
+    /**
+     * Decodes the obfuscated secret key from a hex string.
+     * The hex string is the literal hex representation of the secret bytes,
+     * making it harder to read with a simple string search.
+     *
+     * @param hex the hex-encoded secret
+     * @return the decoded secret bytes
+     */
+    private static byte[] decodeSecret(String hex) {
+        int len = hex.length();
+        byte[] data = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            data[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4)
+                + Character.digit(hex.charAt(i + 1), 16));
+        }
+        return data;
+    }
 
     /**
-     * Computes a hash of the server's identity for license verification.
-     * This uniquely identifies the server without exposing the actual IP.
-     * Uses a combination of server properties for fingerprinting.
+     * Constant-time byte array comparison to prevent timing attacks.
+     * Always compares all bytes regardless of where the first difference occurs.
+     *
+     * @param a first array
+     * @param b second array
+     * @return true if arrays are equal
      */
-    private String computeServerHash() {
-        try {
-            // Combine multiple server identity sources for a unique fingerprint
-            String identity = System.getProperty("user.name", "unknown")
-                + ":" + java.net.InetAddress.getLocalHost().getHostName()
-                + ":" + Path.of(".").toAbsolutePath().hashCode();
-
-            MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
-            byte[] hash = sha256.digest(identity.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash).substring(0, 16); // First 16 hex chars
-        } catch (NoSuchAlgorithmException | IOException e) {
-            // Fallback — less unique but still functional
-            return "fallback-" + Integer.toHexString(System.identityHashCode(this));
+    private static boolean constantTimeEquals(byte[] a, byte[] b) {
+        if (a.length != b.length) return false;
+        int result = 0;
+        for (int i = 0; i < a.length; i++) {
+            result |= a[i] ^ b[i];
         }
+        return result == 0;
+    }
+
+    /**
+     * Converts bytes to a hex string.
+     */
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
     }
 }

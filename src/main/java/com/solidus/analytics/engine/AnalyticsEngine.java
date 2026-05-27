@@ -133,44 +133,48 @@ public class AnalyticsEngine {
 
     /**
      * Initializes premium features (license verification, health score, fraud detector, Discord).
+     *
+     * <p>License verification is now fully local (HMAC-SHA256 offline verification).
+     * No network access or remote server is needed. Verification happens instantly
+     * and synchronously during engine initialization.</p>
      */
     private void initializePremium(Path configDir) {
-        // Initialize license verifier
+        // Initialize license verifier (local verification — no network needed)
         licenseVerifier = new LicenseVerifier(configDir);
 
-        licenseVerifier.initialize().thenAccept(state -> {
-            premiumEnabled = licenseVerifier.isPremiumEnabled();
+        // Verify synchronously (instant — no CompletableFuture)
+        LicenseVerifier.VerificationState state = licenseVerifier.initialize();
+        premiumEnabled = licenseVerifier.isPremiumEnabled();
 
-            if (premiumEnabled) {
-                SolidusAnalyticsMod.LOGGER.info("Premium license verified. Activating premium features...");
+        if (premiumEnabled) {
+            SolidusAnalyticsMod.LOGGER.info("Premium license verified. Activating premium features...");
 
-                // Initialize premium components
-                healthScore = new EconomyHealthScore(this);
-                fraudDetector = new FraudDetector(this, economyDbPath);
-                discordNotifier = new DiscordWebhookNotifier();
+            // Initialize premium components
+            healthScore = new EconomyHealthScore(this);
+            fraudDetector = new FraudDetector(this, economyDbPath);
+            discordNotifier = new DiscordWebhookNotifier();
 
-                // Configure Discord notifier from config
-                if (config.isDiscordEnabled()) {
-                    discordNotifier.configure(config.getDiscordWebhookUrl(), true);
-                    discordNotifier.setNotifyFraud(config.isNotifyFraud());
-                    discordNotifier.setNotifyInflation(config.isNotifyInflation());
-                    discordNotifier.setNotifyDailySummary(config.isNotifyDailySummary());
-                    discordNotifier.setNotifyHealthScore(config.isNotifyHealthScore());
-                    discordNotifier.setHealthScoreThreshold(config.getHealthScoreAlertThreshold());
-                }
-
-                // Run initial fraud scan
-                database.getExecutor().submit(() -> {
-                    try {
-                        fraudDetector.runAllChecks();
-                    } catch (Exception e) {
-                        SolidusAnalyticsMod.LOGGER.error("Initial fraud scan failed", e);
-                    }
-                });
-            } else {
-                SolidusAnalyticsMod.LOGGER.info("No valid premium license. Premium features disabled.");
+            // Configure Discord notifier from config
+            if (config.isDiscordEnabled()) {
+                discordNotifier.configure(config.getDiscordWebhookUrl(), true);
+                discordNotifier.setNotifyFraud(config.isNotifyFraud());
+                discordNotifier.setNotifyInflation(config.isNotifyInflation());
+                discordNotifier.setNotifyDailySummary(config.isNotifyDailySummary());
+                discordNotifier.setNotifyHealthScore(config.isNotifyHealthScore());
+                discordNotifier.setHealthScoreThreshold(config.getHealthScoreAlertThreshold());
             }
-        });
+
+            // Run initial fraud scan
+            database.getExecutor().submit(() -> {
+                try {
+                    fraudDetector.runAllChecks();
+                } catch (Exception e) {
+                    SolidusAnalyticsMod.LOGGER.error("Initial fraud scan failed", e);
+                }
+            });
+        } else {
+            SolidusAnalyticsMod.LOGGER.info("No valid premium license. Premium features disabled. State: {}", state);
+        }
     }
 
     /**

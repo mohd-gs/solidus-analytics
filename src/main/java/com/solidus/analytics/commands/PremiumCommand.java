@@ -5,7 +5,6 @@ import com.solidus.analytics.license.LicenseVerifier;
 import com.solidus.analytics.premium.EconomyHealthScore;
 import com.solidus.analytics.premium.FraudDetector;
 import com.solidus.analytics.premium.DiscordWebhookNotifier;
-
 import com.solidus.analytics.premium.WeeklyReportGenerator;
 
 import com.mojang.brigadier.CommandDispatcher;
@@ -18,20 +17,25 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 /**
  * /analytics premium commands - Premium-only features for licensed servers.
  *
  * <p>Provides access to advanced analytics features that require a valid
- * license key: economy health score, fraud detection alerts, and
- * license management.</p>
+ * license key: economy health score, fraud detection alerts,
+ * license management, and server fingerprint display.</p>
  *
  * <h3>Subcommands:</h3>
  * <ul>
  *   <li>{@code /analytics health} — Economy health score and breakdown</li>
- *   <li>{@code /analytics fraud [list]} — View fraud detection alerts</li>
- *   <li>{@code /analytics license} — View license status</li>
+ *   <li>{@code /analytics fraud [list|scan]} — View or scan for fraud alerts</li>
+ *   <li>{@code /analytics license} — View license status and details</li>
+ *   <li>{@code /analytics fingerprint} — Show this server's fingerprint (for license purchase)</li>
+ *   <li>{@code /analytics report weekly} — Force generate a weekly report</li>
  * </ul>
  *
  * @since 1.0.0
@@ -59,6 +63,11 @@ public class PremiumCommand {
             .then(Commands.literal("license")
                 .requires(source -> source.hasPermission(3))
                 .executes(context -> executeLicenseStatus(context, engine)))
+
+            // /analytics fingerprint — Shows server fingerprint for license purchase
+            .then(Commands.literal("fingerprint")
+                .requires(source -> source.hasPermission(3))
+                .executes(context -> executeFingerprint(context, engine)))
 
             // /analytics report weekly — Force generate a weekly report
             .then(Commands.literal("report")
@@ -244,10 +253,10 @@ public class PremiumCommand {
             LicenseVerifier.VerificationState state = verifier.getState();
             ChatFormatting stateColor = switch (state) {
                 case VERIFIED -> ChatFormatting.GREEN;
-                case GRACE_PERIOD -> ChatFormatting.YELLOW;
-                case VERIFYING -> ChatFormatting.AQUA;
+                case EXPIRED -> ChatFormatting.GOLD;
+                case FINGERPRINT_MISMATCH -> ChatFormatting.LIGHT_PURPLE;
                 case UNVERIFIED -> ChatFormatting.GRAY;
-                case INVALID, NETWORK_ERROR -> ChatFormatting.RED;
+                case INVALID -> ChatFormatting.RED;
             };
 
             sendFeedback(source, styled("  Status: ", ChatFormatting.GRAY)
@@ -256,6 +265,27 @@ public class PremiumCommand {
             if (verifier.getLicenseeName() != null) {
                 sendFeedback(source, styled("  Licensed to: ", ChatFormatting.GRAY)
                     .append(styled(verifier.getLicenseeName(), ChatFormatting.WHITE)));
+            }
+
+            if (verifier.getExpiryDate() != null) {
+                LocalDate expiry = verifier.getExpiryDate();
+                long daysLeft = ChronoUnit.DAYS.between(LocalDate.now(), expiry);
+                ChatFormatting expiryColor = daysLeft > 30 ? ChatFormatting.GREEN
+                    : daysLeft > 7 ? ChatFormatting.YELLOW
+                    : ChatFormatting.RED;
+
+                sendFeedback(source, styled("  Expires: ", ChatFormatting.GRAY)
+                    .append(styled(expiry.format(DateTimeFormatter.ISO_LOCAL_DATE), ChatFormatting.WHITE))
+                    .append(styled(" (" + daysLeft + " days remaining)", expiryColor)));
+            }
+
+            if (verifier.getFingerprint() != null) {
+                String fp = verifier.getFingerprint();
+                String fpDisplay = "ANY".equals(fp)
+                    ? "Universal (any server)"
+                    : fp + " (server-specific)";
+                sendFeedback(source, styled("  Fingerprint: ", ChatFormatting.GRAY)
+                    .append(styled(fpDisplay, ChatFormatting.WHITE)));
             }
 
             if (verifier.getErrorMessage() != null) {
@@ -268,6 +298,29 @@ public class PremiumCommand {
                     verifier.isPremiumEnabled() ? ChatFormatting.GREEN : ChatFormatting.RED)));
         }
 
+        sendFeedback(source, styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
+        return 1;
+    }
+
+    // ── Subcommand: Server Fingerprint ──────────────────────
+
+    /**
+     * Shows this server's fingerprint. The buyer sends this to the seller
+     * so the seller can generate a server-specific license key.
+     */
+    private static int executeFingerprint(CommandContext<CommandSourceStack> context, AnalyticsEngine engine) {
+        CommandSourceStack source = context.getSource();
+        String fingerprint = LicenseVerifier.computeServerFingerprint();
+
+        sendFeedback(source, styledBold("═══════ Server Fingerprint ═══════", ChatFormatting.GOLD));
+        sendFeedback(source, styled("  Your server fingerprint:", ChatFormatting.GRAY));
+        sendFeedback(source, styled("  " + fingerprint, ChatFormatting.AQUA));
+        sendFeedback(source, styled("", ChatFormatting.GRAY));
+        sendFeedback(source, styled("  Send this fingerprint to the license seller", ChatFormatting.YELLOW));
+        sendFeedback(source, styled("  so they can generate a server-specific key.", ChatFormatting.YELLOW));
+        sendFeedback(source, styled("", ChatFormatting.GRAY));
+        sendFeedback(source, styled("  If you have a universal key (fingerprint: ANY),", ChatFormatting.GRAY));
+        sendFeedback(source, styled("  you do not need to provide this fingerprint.", ChatFormatting.DARK_GRAY));
         sendFeedback(source, styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
         return 1;
     }
