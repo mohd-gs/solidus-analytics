@@ -296,6 +296,20 @@ public class DiscordWebhookNotifier {
 
     // ── Accessors ───────────────────────────────────────────
 
+    /**
+     * Sends a custom embed message to Discord with arbitrary title and description.
+     * Used by WeeklyReportGenerator and other premium features.
+     *
+     * @param title       The embed title
+     * @param description The embed description (supports newlines)
+     * @param color       The hex color code as a string (e.g., "5763719" for green)
+     */
+    public void notifyCustomEmbed(String title, String description, String color) {
+        if (!enabled) return;
+        String json = buildEmbed(title, description, "Solidus Analytics", color);
+        sendWebhookAsync(json);
+    }
+
     public boolean isEnabled() {
         return enabled;
     }

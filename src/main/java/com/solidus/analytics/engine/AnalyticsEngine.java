@@ -7,17 +7,18 @@ import com.solidus.analytics.license.LicenseVerifier;
 import com.solidus.analytics.premium.DiscordWebhookNotifier;
 import com.solidus.analytics.premium.EconomyHealthScore;
 import com.solidus.analytics.premium.FraudDetector;
+import com.solidus.analytics.premium.WeeklyReportGenerator;
 import com.solidus.analytics.storage.AnalyticsDatabase;
 
 import java.nio.file.Path;
-import java.util.concurrent.TimeUnit;
 
 /**
  * AnalyticsEngine - Central coordinator for the Solidus Analytics subsystem.
  *
  * <p>Owns and coordinates all analytics components: the database, live metrics
  * tracker, snapshot scheduler, inflation calculator, and premium features
- * (license verifier, health score, fraud detector, Discord notifier).</p>
+ * (license verifier, health score, fraud detector, Discord notifier,
+ * weekly report generator).</p>
  *
  * <h3>Lifecycle:</h3>
  * <ol>
@@ -26,16 +27,6 @@ import java.util.concurrent.TimeUnit;
  *   <li>Runtime — commands query live metrics, snapshots, inflation data</li>
  *   <li>shutdown() — stops polling, flushes data, closes connections</li>
  * </ol>
- *
- * <h3>Integration Modes:</h3>
- * <ul>
- *   <li><b>Full Integration:</b> Solidus is loaded and API is available.
- *       Analytics uses both the API (for live data) and direct DB reads
- *       (for historical data and batch computations).</li>
- *   <li><b>Standalone Mode:</b> Solidus is NOT loaded or API is unavailable.
- *       Analytics reads the economy.db and auctions.db directly via JDBC.
- *       All features work, just without the real-time API shortcut methods.</li>
- * </ul>
  *
  * @since 1.0.0
  */
@@ -55,6 +46,7 @@ public class AnalyticsEngine {
     private EconomyHealthScore healthScore;
     private FraudDetector fraudDetector;
     private DiscordWebhookNotifier discordNotifier;
+    private WeeklyReportGenerator weeklyReportGenerator;
 
     private volatile boolean initialized = false;
     private volatile boolean premiumEnabled = false;
@@ -65,6 +57,9 @@ public class AnalyticsEngine {
     /** Paths to the Solidus databases */
     private String economyDbPath;
     private String auctionsDbPath;
+
+    /** Path to the config directory */
+    private Path configDirPath;
 
     /** Tick counter for periodic cleanup */
     private int cleanupTickCounter = 0;
@@ -85,7 +80,7 @@ public class AnalyticsEngine {
     public void initialize(String configDir) {
         SolidusAnalyticsMod.LOGGER.info("Initializing Solidus Analytics Engine...");
 
-        Path configDirPath = Path.of(configDir);
+        configDirPath = Path.of(configDir);
 
         // ── Step 1: Load configuration ──
         config = new AnalyticsConfig(configDirPath);
@@ -117,11 +112,15 @@ public class AnalyticsEngine {
 
         // ── Step 6: Initialize snapshot scheduler ──
         snapshotScheduler = new SnapshotScheduler(database, economyDbPath, auctionsDbPath);
+        snapshotScheduler.setEngineRef(this);
 
         // ── Step 7: Initialize inflation calculator ──
         inflationCalculator = new InflationCalculator(database, economyDbPath, auctionsDbPath);
 
-        // ── Step 8: Initialize premium features ──
+        // ── Step 8: Initialize weekly report generator (works for all users) ──
+        weeklyReportGenerator = new WeeklyReportGenerator(this, configDirPath);
+
+        // ── Step 9: Initialize premium features ──
         initializePremium(configDirPath);
 
         initialized = true;
@@ -159,6 +158,15 @@ public class AnalyticsEngine {
                     discordNotifier.setNotifyHealthScore(config.isNotifyHealthScore());
                     discordNotifier.setHealthScoreThreshold(config.getHealthScoreAlertThreshold());
                 }
+
+                // Run initial fraud scan
+                database.getExecutor().submit(() -> {
+                    try {
+                        fraudDetector.runAllChecks();
+                    } catch (Exception e) {
+                        SolidusAnalyticsMod.LOGGER.error("Initial fraud scan failed", e);
+                    }
+                });
             } else {
                 SolidusAnalyticsMod.LOGGER.info("No valid premium license. Premium features disabled.");
             }
@@ -269,12 +277,20 @@ public class AnalyticsEngine {
         return discordNotifier;
     }
 
+    public WeeklyReportGenerator getWeeklyReportGenerator() {
+        return weeklyReportGenerator;
+    }
+
     public boolean isApiIntegrationAvailable() {
         return apiIntegrationAvailable;
     }
 
     public boolean isInitialized() {
         return initialized;
+    }
+
+    public Path getConfigDirPath() {
+        return configDirPath;
     }
 
     private void ensureInitialized() {

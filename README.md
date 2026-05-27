@@ -88,6 +88,7 @@ All commands require OP level 2+ unless noted.
 | `/analytics fraud [list]` | View recent fraud detection alerts |
 | `/analytics fraud scan` | Force a fraud detection scan *(OP level 3+)* |
 | `/analytics license` | View license status *(OP level 3+)* |
+| `/analytics report weekly` | Generate a weekly economy report |
 
 ---
 
@@ -131,6 +132,38 @@ Score interpretation:
 - **50-69 (C+/B)**: Fair — some imbalances to address
 - **30-49 (C/D)**: Poor — significant problems
 - **0-29 (F)**: Critical — economy in distress
+
+---
+
+## Weekly Reports
+
+A plain-text weekly economy report is auto-generated every Monday and saved to:
+```
+config/solidus-analytics/reports/weekly-report-2025-05-26.txt
+```
+
+### Report Contents:
+- Executive summary with health score and grade
+- Key metrics: volume, transactions, active players (7-day breakdown)
+- Inflation analysis with 24h/7d/30d rates
+- Wealth distribution (Gini, top 1%, average/median balance)
+- Top traded items
+- Fraud alerts summary (premium)
+- Actionable recommendations based on detected patterns
+
+### Example Recommendation:
+```
+RECOMMENDATIONS
+───────────────
+  1. High inflation detected. Consider increasing shop prices or adding
+     money sinks (taxes, fees, luxury items) to reduce the money supply.
+  2. Top 1% of players hold 42.5% of all wealth. Consider implementing
+     progressive taxes or new player bonuses.
+```
+
+You can also generate a report manually: `/analytics report weekly`
+
+Reports are also sent to Discord (if webhook is configured).
 
 ---
 

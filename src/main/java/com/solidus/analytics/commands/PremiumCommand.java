@@ -6,6 +6,8 @@ import com.solidus.analytics.premium.EconomyHealthScore;
 import com.solidus.analytics.premium.FraudDetector;
 import com.solidus.analytics.premium.DiscordWebhookNotifier;
 
+import com.solidus.analytics.premium.WeeklyReportGenerator;
+
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.context.CommandContext;
 
@@ -15,6 +17,7 @@ import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 
+import java.nio.file.Path;
 import java.util.List;
 
 /**
@@ -56,6 +59,12 @@ public class PremiumCommand {
             .then(Commands.literal("license")
                 .requires(source -> source.hasPermission(3))
                 .executes(context -> executeLicenseStatus(context, engine)))
+
+            // /analytics report weekly — Force generate a weekly report
+            .then(Commands.literal("report")
+                .requires(source -> source.hasPermission(2))
+                .then(Commands.literal("weekly")
+                    .executes(context -> executeWeeklyReport(context, engine))))
         );
     }
 
@@ -184,6 +193,35 @@ public class PremiumCommand {
                         sendFeedback(source, styled("  [" + alert.severity + "] " + alert.type
                             + " — " + alert.playerName, color));
                     }
+                }
+            });
+        });
+
+        return 1;
+    }
+
+    // ── Subcommand: Weekly Report ───────────────────────────
+
+    private static int executeWeeklyReport(CommandContext<CommandSourceStack> context, AnalyticsEngine engine) {
+        CommandSourceStack source = context.getSource();
+
+        WeeklyReportGenerator reportGen = engine.getWeeklyReportGenerator();
+        if (reportGen == null) {
+            sendFeedback(source, styled("  Weekly report generator not available.", ChatFormatting.RED));
+            return 0;
+        }
+
+        sendFeedback(source, styled("  Generating weekly report...", ChatFormatting.YELLOW));
+
+        engine.getDatabase().getExecutor().submit(() -> {
+            Path reportPath = reportGen.forceGenerate();
+            source.getServer().execute(() -> {
+                if (reportPath != null) {
+                    sendFeedback(source, styled("  Weekly report generated successfully!", ChatFormatting.GREEN));
+                    sendFeedback(source, styled("  Saved to: " + reportPath.getFileName(), ChatFormatting.GRAY));
+                    sendFeedback(source, styled("  Full path: " + reportPath.toAbsolutePath(), ChatFormatting.DARK_GRAY));
+                } else {
+                    sendFeedback(source, styled("  Failed to generate weekly report. Check server logs.", ChatFormatting.RED));
                 }
             });
         });

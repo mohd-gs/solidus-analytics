@@ -58,6 +58,9 @@ public class SnapshotScheduler {
     /** Tick counter for scheduling */
     private int tickCounter = 0;
 
+    /** Reference to the analytics engine for weekly report triggering */
+    private volatile com.solidus.analytics.engine.AnalyticsEngine engineRef;
+
     /**
      * Constructs a new SnapshotScheduler.
      *
@@ -69,6 +72,14 @@ public class SnapshotScheduler {
         this.analyticsDb = analyticsDb;
         this.economyDbPath = economyDbPath;
         this.auctionsDbPath = auctionsDbPath;
+    }
+
+    /**
+     * Sets the analytics engine reference for weekly report triggering.
+     * Called after engine initialization is complete.
+     */
+    public void setEngineRef(AnalyticsEngine engine) {
+        this.engineRef = engine;
     }
 
     /**
@@ -133,6 +144,11 @@ public class SnapshotScheduler {
                         lastDailySnapshotDate = today;
                         if (!"DAILY".equals(snapshotType)) {
                             takeSnapshotAsync("DAILY"); // recursive, but safe — only once per day
+                        }
+
+                        // Check if we should generate a weekly report
+                        if (engineRef != null && engineRef.getWeeklyReportGenerator() != null) {
+                            engineRef.getWeeklyReportGenerator().checkAndGenerate();
                         }
                     }
                 }
