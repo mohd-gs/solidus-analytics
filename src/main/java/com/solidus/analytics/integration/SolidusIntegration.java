@@ -44,7 +44,6 @@ public final class SolidusIntegration {
     private Method getEconomyEngineMethod;
     private Method getStorageMethod;
     private Method getCachedPlayerCountMethod;
-    private Method getBalanceMethod;
 
     private SolidusIntegration(Object apiInstance, Class<?> apiClass) {
         this.apiInstance = apiInstance;

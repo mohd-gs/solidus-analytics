@@ -231,6 +231,7 @@ public class AnalyticsDatabase {
                 }
             }
         }
+        initialized = false;
         SolidusAnalyticsMod.LOGGER.info("Analytics database shut down complete.");
     }
 

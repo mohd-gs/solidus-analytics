@@ -72,9 +72,7 @@ public class AnalyticsConfig {
     private double healthScoreAlertThreshold = 50.0;
     private String fraudMinSeverity = "HIGH";
 
-    // ── License ─────────────────────────────────────────────
 
-    private boolean premiumEnabled = false;
 
     /**
      * Constructs a new AnalyticsConfig.
@@ -119,7 +117,8 @@ public class AnalyticsConfig {
         healthScoreAlertThreshold = getDouble("discord.health_score.threshold", 50.0);
         fraudMinSeverity = properties.getProperty("discord.fraud.min_severity", "HIGH");
 
-        premiumEnabled = getBoolean("premium.enabled", false);
+        // Note: premium.enabled config is removed — premium is controlled
+        // exclusively by the license key file (config/solidus-analytics/license.key)
     }
 
     /**
@@ -162,7 +161,7 @@ public class AnalyticsConfig {
         defaults.setProperty("discord.fraud.min_severity", "HIGH");
 
         // Premium
-        defaults.setProperty("premium.enabled", "false");
+        // No premium.enabled config — premium is controlled by license key only
 
         try {
             Files.createDirectories(configPath.getParent());
@@ -194,7 +193,8 @@ public class AnalyticsConfig {
                       discord.fraud.min_severity — Min severity for fraud alerts: LOW, MEDIUM, HIGH (default: HIGH)
 
                     Premium Features:
-                      premium.enabled — Enable premium features (requires license key) (default: false)
+                      Premium is controlled by the license key file, not this config.
+                      Place your license key in: config/solidus-analytics/license.key
                     """);
             }
             // Copy defaults into the active properties
@@ -240,7 +240,7 @@ public class AnalyticsConfig {
     public boolean isNotifyHealthScore() { return notifyHealthScore; }
     public double getHealthScoreAlertThreshold() { return healthScoreAlertThreshold; }
     public String getFraudMinSeverity() { return fraudMinSeverity; }
-    public boolean isPremiumEnabled() { return premiumEnabled; }
+
 
     // ── Setters ─────────────────────────────────────────────
 
@@ -259,8 +259,5 @@ public class AnalyticsConfig {
         properties.setProperty("discord.enabled", String.valueOf(enabled));
     }
 
-    public void setPremiumEnabled(boolean enabled) {
-        this.premiumEnabled = enabled;
-        properties.setProperty("premium.enabled", String.valueOf(enabled));
-    }
+
 }

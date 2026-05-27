@@ -48,6 +48,9 @@ public class DiscordWebhookNotifier {
     private volatile String webhookUrl;
     private volatile boolean enabled = false;
 
+    /** Whether to send fraud alerts at all */
+    private volatile boolean notifyFraud = true;
+
     /** Minimum severity to send fraud alerts */
     private volatile FraudAlert.Severity minFraudSeverity = FraudAlert.Severity.HIGH;
 
@@ -122,6 +125,7 @@ public class DiscordWebhookNotifier {
      */
     public void notifyFraudAlert(FraudAlert alert) {
         if (!enabled) return;
+        if (!notifyFraud) return;
         if (alert.severity.ordinal() < minFraudSeverity.ordinal()) return;
 
         String color = switch (alert.severity) {
@@ -332,5 +336,34 @@ public class DiscordWebhookNotifier {
 
     public void setHealthScoreThreshold(double threshold) {
         this.healthScoreThreshold = threshold;
+    }
+
+    /**
+     * Sets whether fraud alerts should be sent to Discord.
+     * When disabled, no fraud alerts are sent regardless of severity.
+     *
+     * @param enabled true to enable fraud notifications
+     */
+    public void setNotifyFraud(boolean enabled) {
+        this.notifyFraud = enabled;
+    }
+
+    /**
+     * Sets the minimum fraud severity for Discord notifications.
+     * Only takes effect if fraud notifications are enabled via setNotifyFraud(true).
+     * Accepts string values: "LOW", "MEDIUM", "HIGH".
+     *
+     * @param severity the minimum severity as a string
+     */
+    public void setFraudMinSeverity(String severity) {
+        if (severity == null) {
+            this.minFraudSeverity = FraudAlert.Severity.HIGH;
+            return;
+        }
+        this.minFraudSeverity = switch (severity.toUpperCase()) {
+            case "LOW" -> FraudAlert.Severity.LOW;
+            case "MEDIUM" -> FraudAlert.Severity.MEDIUM;
+            default -> FraudAlert.Severity.HIGH;
+        };
     }
 }

@@ -158,7 +158,8 @@ public class AnalyticsEngine {
             if (config.isDiscordEnabled()) {
                 discordNotifier.configure(config.getDiscordWebhookUrl(), true);
                 discordNotifier.setNotifyFraud(config.isNotifyFraud());
-                discordNotifier.setNotifyInflation(config.isNotifyInflation());
+                discordNotifier.setFraudMinSeverity(config.getFraudMinSeverity());
+                discordNotifier.setNotifyInflationWarnings(config.isNotifyInflation());
                 discordNotifier.setNotifyDailySummary(config.isNotifyDailySummary());
                 discordNotifier.setNotifyHealthScore(config.isNotifyHealthScore());
                 discordNotifier.setHealthScoreThreshold(config.getHealthScoreAlertThreshold());
