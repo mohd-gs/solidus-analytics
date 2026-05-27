@@ -1,0 +1,93 @@
+plugins {
+    id 'java'
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+// ──────────────────────────────────────────────────────────
+// Solidus Analytics - Data Analytics Engine for Solidus Economy
+// Minecraft 26.1.x | Fabric Loader 0.19.2+ | Java 25
+// ──────────────────────────────────────────────────────────
+//
+// IMPORTANT: MINECRAFT 26.1.x UNOBFUSCATED BUILD
+// ──────────────────────────────────────────────────────────
+// Starting with Minecraft 26.1, Mojang no longer obfuscates
+// the game JAR. This means:
+//
+// - NO mappings dependency is needed (Yarn is retired)
+// - The Loom plugin ID changed from 'fabric-loom' (remapping)
+//   to 'net.fabricmc.fabric-loom' (no remapping)
+// - Use standard Gradle dependency configurations:
+//     modImplementation → implementation
+//     modCompileOnly    → compileOnly
+//     remapJar          → jar
+// - Minecraft source code uses Mojang's official names directly
+// - Mixin method/field references use the real (unobfuscated) names
+//
+// Integration with Solidus Core:
+//   This mod uses REFLECTION to access SolidusAPI, meaning there
+//   is ZERO compile-time dependency on the Solidus JAR. The mod
+//   checks at runtime if Solidus is loaded and gracefully disables
+//   itself if not.
+// ──────────────────────────────────────────────────────────
+
+java {
+    toolchain {
+        languageVersion = LanguageVersion.of(25)
+    }
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}
+
+version = project.mod_version
+group = project.maven_group
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Minecraft (unobfuscated since 26.1 — no mappings needed)
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+
+    // Fabric Loader & API — use standard 'implementation' (not modImplementation)
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+    // Standard dependencies
+    implementation "org.xerial:sqlite-jdbc:3.47.2.0"
+
+    // Include sqlite-jdbc in the final JAR for server-side database access
+    include "org.xerial:sqlite-jdbc:3.47.2.0"
+
+    // NOTE: No compile dependency on Solidus!
+    // Integration is done via reflection at runtime.
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+    options.release = 25
+}
+
+jar {
+    from("LICENSE") {
+        rename { "${it}_${project.archives_base_name}" }
+    }
+    manifest {
+        attributes([
+            "Implementation-Title": project.archives_base_name,
+            "Implementation-Version": project.version
+        ])
+    }
+}
+
+processResources {
+    inputs.property "version", project.version
+    inputs.property "minecraft_version", project.minecraft_version
+    inputs.property "loader_version", project.loader_version
+
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version,
+               "minecraft_version": project.minecraft_version,
+               "loader_version": project.loader_version
+    }
+}

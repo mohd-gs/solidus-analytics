@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 2,
+  "id": "solidus-analytics",
+  "version": "${version}",
+  "name": "Solidus Analytics",
+  "description": "Data analytics engine for Solidus economy — dashboards, inflation tracking, wealth distribution",
+  "authors": ["MOHD_Gs"],
+  "contact": {},
+  "license": "MIT",
+  "environment": "server",
+  "entrypoints": {
+    "server": [
+      "com.solidus.analytics.SolidusAnalyticsMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.2",
+    "minecraft": ">=26.1",
+    "java": ">=25",
+    "fabric-api": "*",
+    "solidus": "*"
+  }
+}
