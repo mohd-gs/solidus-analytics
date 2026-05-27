@@ -322,8 +322,10 @@ public class AnalyticsCommand {
         player.sendSystemMessage(styled("Taking analytics snapshot...", ChatFormatting.YELLOW));
         engine.getSnapshotScheduler().forceSnapshot("MANUAL");
 
+        // Note: The snapshot runs asynchronously. Results will be available
+        // after a brief delay. We schedule a delayed confirmation message.
         player.server.execute(() -> {
-            player.sendSystemMessage(styled("Snapshot taken successfully. Check /analytics wealth for results.", ChatFormatting.GREEN));
+            player.sendSystemMessage(styled("Snapshot submitted. Check /analytics wealth for results in a few seconds.", ChatFormatting.GREEN));
         });
 
         return 1;

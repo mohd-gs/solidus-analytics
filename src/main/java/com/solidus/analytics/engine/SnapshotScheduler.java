@@ -122,10 +122,10 @@ public class SnapshotScheduler {
                     analyticsDb.insertSnapshot(snapshot);
 
                     SolidusAnalyticsMod.LOGGER.info(
-                        "Snapshot taken [{}]: {} players, total wealth={} cents, Gini={}, top1%={:.1f}%",
+                        "Snapshot taken [{}]: {} players, total wealth={} cents, Gini={}, top1%={}%",
                         snapshotType, data.playerCount, data.totalWealth,
                         String.format("%.4f", data.giniCoefficient),
-                        data.top1PercentShare * 100);
+                        String.format("%.1f", data.top1PercentShare * 100));
 
                     // Check if we need a daily snapshot too
                     String today = java.time.LocalDate.now(java.time.ZoneOffset.UTC).toString();

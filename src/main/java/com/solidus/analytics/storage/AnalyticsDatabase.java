@@ -31,9 +31,10 @@ import java.util.concurrent.TimeUnit;
  * </ul>
  *
  * <h3>Thread Safety:</h3>
- * All write operations are submitted to a single-threaded executor, guaranteeing
- * serialized access. Read operations also go through the executor for consistency.
- * The persistent connection is only ever accessed from the executor thread.
+ * All database operations (both reads and writes) are synchronized via a shared
+ * lock object to prevent concurrent access to the persistent JDBC connection.
+ * Write operations are also submitted to a single-threaded executor for serialization.
+ * The persistent connection is never accessed from multiple threads simultaneously.
  *
  * @since 1.0.0
  */
@@ -100,6 +101,9 @@ public class AnalyticsDatabase {
     private final String databaseUrl;
     private volatile Connection persistentConnection;
     private volatile boolean initialized = false;
+
+    /** Lock object for synchronized access to the persistent connection */
+    private final Object connectionLock = new Object();
 
     /**
      * Immutable record representing a single analytics snapshot.
@@ -240,21 +244,23 @@ public class AnalyticsDatabase {
              auction_active_listings, auction_total_value)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """;
-        try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
-            ps.setLong(1, snapshot.timestamp());
-            ps.setString(2, snapshot.snapshotType());
-            ps.setLong(3, snapshot.totalWealth());
-            ps.setInt(4, snapshot.playerCount());
-            ps.setDouble(5, snapshot.giniCoefficient());
-            ps.setLong(6, snapshot.avgBalance());
-            ps.setLong(7, snapshot.medianBalance());
-            ps.setDouble(8, snapshot.top1PercentShare());
-            ps.setLong(9, snapshot.moneySupply());
-            ps.setInt(10, snapshot.auctionActiveListings());
-            ps.setLong(11, snapshot.auctionTotalValue());
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            SolidusAnalyticsMod.LOGGER.error("Failed to insert analytics snapshot", e);
+        synchronized (connectionLock) {
+            try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
+                ps.setLong(1, snapshot.timestamp());
+                ps.setString(2, snapshot.snapshotType());
+                ps.setLong(3, snapshot.totalWealth());
+                ps.setInt(4, snapshot.playerCount());
+                ps.setDouble(5, snapshot.giniCoefficient());
+                ps.setLong(6, snapshot.avgBalance());
+                ps.setLong(7, snapshot.medianBalance());
+                ps.setDouble(8, snapshot.top1PercentShare());
+                ps.setLong(9, snapshot.moneySupply());
+                ps.setInt(10, snapshot.auctionActiveListings());
+                ps.setLong(11, snapshot.auctionTotalValue());
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                SolidusAnalyticsMod.LOGGER.error("Failed to insert analytics snapshot", e);
+            }
         }
     }
 
@@ -276,13 +282,15 @@ public class AnalyticsDatabase {
     public Snapshot getLatestSnapshot() {
         ensureInitialized();
         String sql = "SELECT * FROM analytics_snapshots ORDER BY timestamp DESC LIMIT 1";
-        try (Statement stmt = persistentConnection.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-            if (rs.next()) {
-                return mapSnapshot(rs);
+        synchronized (connectionLock) {
+            try (Statement stmt = persistentConnection.createStatement();
+                 ResultSet rs = stmt.executeQuery(sql)) {
+                if (rs.next()) {
+                    return mapSnapshot(rs);
+                }
+            } catch (SQLException e) {
+                SolidusAnalyticsMod.LOGGER.error("Failed to get latest snapshot", e);
             }
-        } catch (SQLException e) {
-            SolidusAnalyticsMod.LOGGER.error("Failed to get latest snapshot", e);
         }
         return null;
     }
@@ -296,15 +304,17 @@ public class AnalyticsDatabase {
     public Snapshot getSnapshotBefore(long timestamp) {
         ensureInitialized();
         String sql = "SELECT * FROM analytics_snapshots WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1";
-        try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
-            ps.setLong(1, timestamp);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return mapSnapshot(rs);
+        synchronized (connectionLock) {
+            try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
+                ps.setLong(1, timestamp);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        return mapSnapshot(rs);
+                    }
                 }
+            } catch (SQLException e) {
+                SolidusAnalyticsMod.LOGGER.error("Failed to get snapshot before timestamp", e);
             }
-        } catch (SQLException e) {
-            SolidusAnalyticsMod.LOGGER.error("Failed to get snapshot before timestamp", e);
         }
         return null;
     }
@@ -319,32 +329,33 @@ public class AnalyticsDatabase {
     public List<Snapshot> getSnapshots(String snapshotType, int limit) {
         ensureInitialized();
         List<Snapshot> snapshots = new ArrayList<>();
-        String sql;
-        try {
-            if (snapshotType != null) {
-                sql = "SELECT * FROM analytics_snapshots WHERE snapshot_type = ? ORDER BY timestamp DESC LIMIT ?";
-                try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
-                    ps.setString(1, snapshotType);
-                    ps.setInt(2, limit);
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            snapshots.add(mapSnapshot(rs));
+        synchronized (connectionLock) {
+            try {
+                if (snapshotType != null) {
+                    String sql = "SELECT * FROM analytics_snapshots WHERE snapshot_type = ? ORDER BY timestamp DESC LIMIT ?";
+                    try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
+                        ps.setString(1, snapshotType);
+                        ps.setInt(2, limit);
+                        try (ResultSet rs = ps.executeQuery()) {
+                            while (rs.next()) {
+                                snapshots.add(mapSnapshot(rs));
+                            }
+                        }
+                    }
+                } else {
+                    String sql = "SELECT * FROM analytics_snapshots ORDER BY timestamp DESC LIMIT ?";
+                    try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
+                        ps.setInt(1, limit);
+                        try (ResultSet rs = ps.executeQuery()) {
+                            while (rs.next()) {
+                                snapshots.add(mapSnapshot(rs));
+                            }
                         }
                     }
                 }
-            } else {
-                sql = "SELECT * FROM analytics_snapshots ORDER BY timestamp DESC LIMIT ?";
-                try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
-                    ps.setInt(1, limit);
-                    try (ResultSet rs = ps.executeQuery()) {
-                        while (rs.next()) {
-                            snapshots.add(mapSnapshot(rs));
-                        }
-                    }
-                }
+            } catch (SQLException e) {
+                SolidusAnalyticsMod.LOGGER.error("Failed to get snapshots", e);
             }
-        } catch (SQLException e) {
-            SolidusAnalyticsMod.LOGGER.error("Failed to get snapshots", e);
         }
         return snapshots;
     }
@@ -365,26 +376,28 @@ public class AnalyticsDatabase {
              inflation_rate, top_item_bought, top_item_sold)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """;
-        try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
-            ps.setString(1, metrics.date());
-            ps.setInt(2, metrics.transactionCount());
-            ps.setLong(3, metrics.transactionVolume());
-            ps.setInt(4, metrics.shopBuyCount());
-            ps.setInt(5, metrics.shopSellCount());
-            ps.setInt(6, metrics.auctionCount());
-            ps.setInt(7, metrics.payTransferCount());
-            ps.setInt(8, metrics.newPlayers());
-            ps.setInt(9, metrics.activePlayers());
-            if (metrics.inflationRate() != null) {
-                ps.setDouble(10, metrics.inflationRate());
-            } else {
-                ps.setNull(10, java.sql.Types.REAL);
+        synchronized (connectionLock) {
+            try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
+                ps.setString(1, metrics.date());
+                ps.setInt(2, metrics.transactionCount());
+                ps.setLong(3, metrics.transactionVolume());
+                ps.setInt(4, metrics.shopBuyCount());
+                ps.setInt(5, metrics.shopSellCount());
+                ps.setInt(6, metrics.auctionCount());
+                ps.setInt(7, metrics.payTransferCount());
+                ps.setInt(8, metrics.newPlayers());
+                ps.setInt(9, metrics.activePlayers());
+                if (metrics.inflationRate() != null) {
+                    ps.setDouble(10, metrics.inflationRate());
+                } else {
+                    ps.setNull(10, java.sql.Types.REAL);
+                }
+                ps.setString(11, metrics.topItemBought());
+                ps.setString(12, metrics.topItemSold());
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                SolidusAnalyticsMod.LOGGER.error("Failed to upsert daily metrics", e);
             }
-            ps.setString(11, metrics.topItemBought());
-            ps.setString(12, metrics.topItemSold());
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            SolidusAnalyticsMod.LOGGER.error("Failed to upsert daily metrics", e);
         }
     }
 
@@ -405,15 +418,17 @@ public class AnalyticsDatabase {
     public DailyMetrics getDailyMetrics(String date) {
         ensureInitialized();
         String sql = "SELECT * FROM analytics_daily_metrics WHERE date = ?";
-        try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
-            ps.setString(1, date);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return mapDailyMetrics(rs);
+        synchronized (connectionLock) {
+            try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
+                ps.setString(1, date);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        return mapDailyMetrics(rs);
+                    }
                 }
+            } catch (SQLException e) {
+                SolidusAnalyticsMod.LOGGER.error("Failed to get daily metrics for date: {}", date, e);
             }
-        } catch (SQLException e) {
-            SolidusAnalyticsMod.LOGGER.error("Failed to get daily metrics for date: {}", date, e);
         }
         return null;
     }
@@ -428,15 +443,17 @@ public class AnalyticsDatabase {
         ensureInitialized();
         List<DailyMetrics> metrics = new ArrayList<>();
         String sql = "SELECT * FROM analytics_daily_metrics ORDER BY date DESC LIMIT ?";
-        try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
-            ps.setInt(1, limit);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    metrics.add(mapDailyMetrics(rs));
+        synchronized (connectionLock) {
+            try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
+                ps.setInt(1, limit);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        metrics.add(mapDailyMetrics(rs));
+                    }
                 }
+            } catch (SQLException e) {
+                SolidusAnalyticsMod.LOGGER.error("Failed to get recent daily metrics", e);
             }
-        } catch (SQLException e) {
-            SolidusAnalyticsMod.LOGGER.error("Failed to get recent daily metrics", e);
         }
         return metrics;
     }
@@ -455,16 +472,18 @@ public class AnalyticsDatabase {
             (date, material, buy_count, sell_count, total_quantity, total_value)
             VALUES (?, ?, ?, ?, ?, ?)
         """;
-        try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
-            ps.setString(1, metrics.date());
-            ps.setString(2, metrics.material());
-            ps.setInt(3, metrics.buyCount());
-            ps.setInt(4, metrics.sellCount());
-            ps.setInt(5, metrics.totalQuantity());
-            ps.setLong(6, metrics.totalValue());
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            SolidusAnalyticsMod.LOGGER.error("Failed to upsert item metrics", e);
+        synchronized (connectionLock) {
+            try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
+                ps.setString(1, metrics.date());
+                ps.setString(2, metrics.material());
+                ps.setInt(3, metrics.buyCount());
+                ps.setInt(4, metrics.sellCount());
+                ps.setInt(5, metrics.totalQuantity());
+                ps.setLong(6, metrics.totalValue());
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                SolidusAnalyticsMod.LOGGER.error("Failed to upsert item metrics", e);
+            }
         }
     }
 
@@ -486,15 +505,17 @@ public class AnalyticsDatabase {
         ensureInitialized();
         List<ItemMetrics> metrics = new ArrayList<>();
         String sql = "SELECT * FROM analytics_item_metrics WHERE date = ? ORDER BY total_value DESC";
-        try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
-            ps.setString(1, date);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    metrics.add(mapItemMetrics(rs));
+        synchronized (connectionLock) {
+            try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
+                ps.setString(1, date);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        metrics.add(mapItemMetrics(rs));
+                    }
                 }
+            } catch (SQLException e) {
+                SolidusAnalyticsMod.LOGGER.error("Failed to get item metrics for date: {}", date, e);
             }
-        } catch (SQLException e) {
-            SolidusAnalyticsMod.LOGGER.error("Failed to get item metrics for date: {}", date, e);
         }
         return metrics;
     }

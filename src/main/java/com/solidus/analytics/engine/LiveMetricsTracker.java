@@ -8,6 +8,7 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Arrays;
@@ -383,13 +384,14 @@ public class LiveMetricsTracker {
         String dbUrl = "jdbc:sqlite:" + economyDbPath;
         String sql = "SELECT MAX(timestamp) as max_ts FROM transaction_log";
 
-        try (Connection conn = DriverManager.getConnection(dbUrl);
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
-
+        try (Connection conn = DriverManager.getConnection(dbUrl)) {
+            // Set read-only mode BEFORE executing any queries
             try (var pragmaStmt = conn.createStatement()) {
                 pragmaStmt.execute("PRAGMA query_only = ON");
             }
+
+            try (Statement stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(sql)) {
 
             if (rs.next()) {
                 long maxTs = rs.getLong("max_ts");
@@ -400,6 +402,7 @@ public class LiveMetricsTracker {
                     lastPolledTimestamp.set(System.currentTimeMillis());
                     SolidusAnalyticsMod.LOGGER.info("No transactions found. Starting from current time.");
                 }
+            }
             }
         } catch (SQLException e) {
             SolidusAnalyticsMod.LOGGER.error("Failed to initialize last polled timestamp", e);
