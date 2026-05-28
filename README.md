@@ -2,102 +2,104 @@
 
 # Solidus Analytics
 
-### The Ultimate Economy Intelligence Dashboard for Minecraft
+### Advanced economy analytics and monitoring for Solidus Core
 
-**See your server's economy like never before — in real time, from anywhere.**
+**Understand your server economy in real time — from anywhere.**
 
-[![Minecraft](https://img.shields.io/badge/Minecraft-26.1.x-green?style=flat-square)](https://minecraft.net)
 [![Fabric](https://img.shields.io/badge/Fabric-0.19.2+-db4848?style=flat-square)](https://fabricmc.net)
-[![License](https://img.shields.io/badge/License-Proprietary-blue?style=flat-square)](LICENSE)
+[![Minecraft](https://img.shields.io/badge/Minecraft-26.1.x-green?style=flat-square)](https://minecraft.net)
 [![Java](https://img.shields.io/badge/Java-25-orange?style=flat-square)](https://adoptium.net)
+[![License](https://img.shields.io/badge/License-Proprietary-blue?style=flat-square)](LICENSE)
 
-[Features](#-features) &bull; [Web Dashboard](#-web-dashboard) &bull; [Quick Start](#-quick-start) &bull; [Commands](#-commands) &bull; [Get Premium](#-get-premium)
+[Features](#-features) · [Web Dashboard](#-web-dashboard) · [Quick Start](#-quick-start) · [Commands](#-commands) · [Ecosystem](#-solidus-ecosystem)
 
 </div>
 
 ---
 
-## Stop Guessing. Start Knowing.
+Solidus Analytics is the intelligence layer for [Solidus Core](https://github.com/mohammad-salah-qasiaa/solidus) — tracking every transaction, measuring wealth inequality, detecting inflation trends, catching fraud, and putting it all on a live web dashboard you can access from your phone.
 
-Your server's economy is alive — transactions flowing, prices shifting, wealth accumulating. But without the right tools, you're flying blind. Is inflation creeping up? Are players exploiting the system? Is wealth concentrated in the hands of a few?
+No VPS required. No open ports needed. Encrypted data pushed to GitHub Pages — decrypted only in your browser. Premium features available with a license key.
 
-**Solidus Analytics gives you X-ray vision into your economy.**
+---
 
-Built as a companion to [Solidus](https://github.com/mohammad-salah-qasiaa/solidus), it tracks every transaction, measures wealth inequality, detects inflation trends, catches fraudsters, and puts it all on a stunning web dashboard you can access from your phone — **no VPS required.**
+## Solidus Ecosystem
+
+| Project | Description |
+|---------|-------------|
+| [Solidus Core](https://github.com/mohammad-salah-qasiaa/solidus) | Economy engine, server shop, auction house |
+| **Solidus Analytics** | Economy intelligence dashboard, inflation tracking, fraud detection |
 
 ---
 
 ## Features
 
-### Free — What You Get Out of the Box
+### Core Analytics (Free)
 
 | Feature | What It Does |
 |---------|-------------|
-| **Live Metrics** | Real-time transaction volume, active players, and item rankings — updated every 30 seconds |
-| **Wealth Distribution** | Gini coefficient, average/median balance, top-1% share — see who holds the money |
-| **Inflation Monitoring** | Money-to-Goods ratio with clear thresholds (Healthy / Warning / Critical) and 24h/7d/30d rates |
-| **Snapshot System** | Automatic economy snapshots every 30 minutes for trend analysis |
-| **Historical Data** | Up to 90 days of daily metrics — watch your economy evolve over time |
+| **Live Metrics** | Real-time transaction volume, active players, item rankings — updated every 30 seconds |
+| **Wealth Distribution** | Gini coefficient, average/median balance, top-1% share |
+| **Inflation Monitoring** | Money-to-Goods ratio with clear thresholds and 24h/7d/30d rates |
+| **Snapshot System** | Periodic economy snapshots every 30 minutes for trend analysis |
+| **Historical Data** | Up to 90 days of daily metrics |
 
-### Premium — Unlock the Full Power
+### Premium Features (Licensed)
 
 | Feature | What It Does |
 |---------|-------------|
-| **Economy Health Score** | A single 0–100 number (with A+ to F grade) that tells you exactly how healthy your economy is — weighted across 5 factors |
-| **Fraud Detection** | Automatic detection of rapid wealth gain, high-frequency trading, and suspicious transaction patterns |
-| **Discord Webhooks** | Real-time alerts pushed to your Discord — fraud warnings, inflation spikes, health drops, and daily summaries |
-| **Weekly Reports** | Auto-generated Monday reports with actionable recommendations — "increase money sinks," "top 1% holds 42% of wealth" |
-| **Web Dashboard** | Beautiful browser-based dashboard with interactive charts — accessible from anywhere, no VPS needed |
+| **Economy Health Score** | Composite 0–100 score with A+ to F grade across 5 weighted factors |
+| **Fraud Detection** | Automatic detection of rapid wealth gain, high-frequency trading, suspicious patterns |
+| **Discord Webhooks** | Real-time alerts — fraud warnings, inflation spikes, health drops, daily summaries |
+| **Weekly Reports** | Auto-generated Monday reports with actionable recommendations |
+| **Web Dashboard** | Interactive browser dashboard with Chart.js visualizations — no VPS needed |
 
 ---
 
 ## Web Dashboard
 
-The crown jewel of Solidus Analytics. A fully interactive, real-time economy dashboard you can open on your phone, tablet, or any browser — even while away from your server.
+A fully interactive economy dashboard accessible from any browser — your phone, tablet, or desktop — even while away from your server.
 
-### Two Modes — Pick What Works for You
+### Two Modes
 
-#### GitHub Pages Mode — Zero Cost, Zero Setup
+#### GitHub Pages Mode — Zero Cost
 
-The dashboard pushes encrypted data to a free GitHub repository. Your players' data is AES-256 encrypted — only you can decrypt it with your password. No VPS, no open ports, no extra costs.
+Data is encrypted with AES-256-GCM and pushed to a free GitHub repository. Only you can decrypt it. No VPS, no open ports, no extra costs.
 
-**How it works:**
 1. Create a free GitHub repo
-2. Run one command: `/analytics dashboard github <token> <owner> <repo>`
-3. Set your encryption password: `/analytics dashboard setup <password>`
+2. `/analytics dashboard github <token> <owner> <repo>`
+3. `/analytics dashboard setup <password>`
 4. Visit `https://yourname.github.io/your-repo` — done
 
-Your server pushes data outbound via HTTPS (works on any hosting, even shared). The browser decrypts data locally using the Web Crypto API — your password never leaves your device.
+The server pushes data outbound via HTTPS (works on any hosting, even shared). Your browser decrypts data locally using the Web Crypto API. Your password never leaves your device.
 
 #### Embedded Server Mode — For VPS Owners
 
-If your server has an open port, the dashboard runs directly on your Minecraft server via an embedded NanoHTTPD web server. Real-time data, HTTP Basic Auth, zero external dependencies.
+If your server has an open port, the dashboard runs directly via an embedded NanoHTTPD web server. Real-time data, HTTP Basic Auth, zero external dependencies.
 
-**How it works:**
 1. Enable in `dashboard.properties`: `webserver.enabled=true`
 2. Set a port: `webserver.port=9090`
 3. Visit `http://your-server:9090` — done
 
-### What You See
+### Dashboard View
 
-- **Economy Health Score** — Big, bold, color-coded score with grade and 5-factor breakdown
-- **Live Metrics** — Daily volume, transaction count, active players, inflation rate — updating every minute
-- **Transaction Volume Chart** — Bar chart showing daily volume trends
+- **Economy Health Score** — Color-coded 0–100 score with grade and 5-factor breakdown
+- **Live Metrics** — Daily volume, transaction count, active players, inflation rate
+- **Transaction Volume Chart** — Bar chart with daily volume trends
 - **Inflation Trend Chart** — Line chart tracking inflation over time
 - **Wealth Distribution** — Doughnut chart showing top 1% vs. 99%
-- **Money:Goods Ratio** — Color-coded ratio bar (blue = deflation, green = healthy, yellow = moderate, red = critical)
-- **Fraud Alerts** — Real-time list with severity badges (HIGH / MEDIUM / LOW)
-- **Top Traded Items** — Most bought and most sold items at a glance
+- **Money:Goods Ratio** — Color-coded bar (blue = deflation, green = healthy, yellow = moderate, red = critical)
+- **Fraud Alerts** — Real-time list with severity badges
+- **Top Traded Items** — Most bought and most sold at a glance
 
-### Security You Can Trust
+### Security
 
 | Concern | How We Handle It |
 |---------|-----------------|
-| Data on public GitHub repos | **AES-256-GCM encryption** with PBKDF2 key derivation (100,000 iterations) — military-grade encryption, decrypted only in your browser |
-| Password stored in config | **Never.** Only a salted SHA-256 hash is stored. The actual password lives in server memory only and is cleared on shutdown |
-| Browser decryption | Uses the native **Web Crypto API** — your password never touches any server after you type it |
-| GitHub token in config | Stored with **XOR obfuscation** — not plain text. Server file permissions provide the real protection |
-| GitHub API conflicts | Automatic **GET-SHA-then-PUT** with exponential backoff retries on 409 Conflict — no data loss, no race conditions |
+| Data on public GitHub repos | **AES-256-GCM** encryption with PBKDF2 key derivation (100,000 iterations) — decrypted only in your browser |
+| Password in config file | **Never.** Only a salted SHA-256 hash is stored. The actual password lives in server memory only and is zeroed on shutdown |
+| Browser decryption | Native **Web Crypto API** — your password never touches any server after you type it |
+| GitHub API concurrency | Automatic **GET-SHA-then-PUT** with exponential backoff on 409 Conflict — no data loss, no race conditions |
 
 ---
 
@@ -107,26 +109,26 @@ If your server has an open port, the dashboard runs directly on your Minecraft s
 
 1. Install [Solidus Core](https://github.com/mohammad-salah-qasiaa/solidus) on your server
 2. Drop `solidus-analytics.jar` into your `mods/` folder
-3. Start the server — everything auto-configures
+3. Start the server — analytics database auto-creates at `config/solidus-analytics/analytics.db`
 
-That's it. Analytics starts tracking immediately.
+That's it. Tracking starts immediately.
 
 ### Premium Activation
 
 1. Get your server fingerprint: `/analytics fingerprint`
 2. Send it to the license seller to receive your key
 3. Place the key in `config/solidus-analytics/license.key`
-4. Restart the server — premium features unlock automatically
+4. Restart — premium features unlock automatically
 
 ### Dashboard Setup (Premium)
 
 ```
-/analytics dashboard setup MySecretPassword     ← Set encryption password
-/analytics dashboard github ghp_xxx MyUser my-repo  ← Connect to GitHub
-/analytics dashboard unlock MySecretPassword    ← Unlock encryption (each startup)
+/analytics dashboard setup MySecretPassword            ← Set encryption password (first time)
+/analytics dashboard github ghp_xxx MyUser my-repo     ← Connect to GitHub
+/analytics dashboard unlock MySecretPassword           ← Unlock encryption (each startup)
 ```
 
-Then visit your GitHub Pages URL. Enter the same password in the browser. You're in.
+Visit your GitHub Pages URL, enter the same password, and you're in.
 
 ---
 
@@ -134,8 +136,8 @@ Then visit your GitHub Pages URL. Enter the same password in the browser. You're
 
 ### Core Commands (Free)
 
-| Command | What It Shows |
-|---------|--------------|
+| Command | Description |
+|---------|-------------|
 | `/analytics` | Live economy dashboard in chat |
 | `/analytics wealth` | Wealth distribution + Gini coefficient |
 | `/analytics inflation` | Inflation rates and Money:Goods ratio |
@@ -149,8 +151,8 @@ Then visit your GitHub Pages URL. Enter the same password in the browser. You're
 
 ### Premium Commands
 
-| Command | What It Shows |
-|---------|--------------|
+| Command | Description |
+|---------|-------------|
 | `/analytics health` | Economy health score with factor breakdown |
 | `/analytics fraud` | Recent fraud detection alerts |
 | `/analytics fraud scan` | Force a fraud detection scan *(OP 3+)* |
@@ -160,11 +162,11 @@ Then visit your GitHub Pages URL. Enter the same password in the browser. You're
 
 ### Dashboard Commands (Premium)
 
-| Command | What It Does |
+| Command | Description |
 |---------|-------------|
-| `/analytics dashboard` | Show dashboard status (encryption, GitHub, web server) |
-| `/analytics dashboard setup <password>` | Set encryption password (first time only) |
-| `/analytics dashboard unlock <password>` | Unlock encryption (each server startup) |
+| `/analytics dashboard` | Show dashboard status |
+| `/analytics dashboard setup <password>` | Set encryption password (first time) |
+| `/analytics dashboard unlock <password>` | Unlock encryption (each startup) |
 | `/analytics dashboard github <token> <owner> <repo>` | Configure GitHub Pages publishing |
 | `/analytics dashboard publish` | Force publish data immediately |
 
@@ -172,7 +174,7 @@ Then visit your GitHub Pages URL. Enter the same password in the browser. You're
 
 ## Economy Health Score
 
-A single number that tells you everything. The health score is a weighted composite of 5 critical economy factors:
+A single number that tells you how healthy your economy is — weighted across 5 critical factors:
 
 | Factor | Weight | What It Measures |
 |--------|--------|-----------------|
@@ -180,23 +182,21 @@ A single number that tells you everything. The health score is a weighted compos
 | Inflation Rate | 25% | Is money losing value too fast? |
 | Money Growth | 20% | Is the money supply expanding at a healthy rate? |
 | Activity Level | 15% | Are players actively trading? |
-| Market Liquidity | 15% | Are there enough items listed on the market? |
-
-**What the scores mean:**
+| Market Liquidity | 15% | Are there enough items on the market? |
 
 | Score | Grade | Status |
 |-------|-------|--------|
-| 90–100 | A+ | Thriving economy — keep doing what you're doing |
-| 70–89 | A / B+ | Healthy with minor concerns — small tweaks needed |
+| 90–100 | A+ | Thriving — keep doing what you're doing |
+| 70–89 | A / B+ | Healthy with minor concerns |
 | 50–69 | C+ / B | Fair — some imbalances worth addressing |
 | 30–49 | C / D | Poor — significant problems need attention |
-| 0–29 | F | Critical — your economy needs immediate intervention |
+| 0–29 | F | Critical — economy needs immediate intervention |
 
 ---
 
 ## Weekly Reports
 
-Every Monday, Solidus Analytics auto-generates a comprehensive economy report and saves it to `config/solidus-analytics/reports/`. If Discord webhooks are configured, the report is also sent to your channel.
+Auto-generated every Monday and saved to `config/solidus-analytics/reports/`. Also sent to Discord if webhooks are configured.
 
 Each report includes:
 - Executive summary with health score and grade
@@ -205,33 +205,37 @@ Each report includes:
 - Wealth distribution (Gini, top 1%, average/median balance)
 - Top traded items
 - Fraud alerts summary
-- **Actionable recommendations** — specific steps to fix detected problems
+- **Actionable recommendations** based on detected patterns
 
-Generate a report any time: `/analytics report weekly`
+Generate any time: `/analytics report weekly`
 
 ---
 
 ## Get Premium
 
-Solidus Analytics is free to use with core analytics features. Premium features — health scoring, fraud detection, Discord alerts, weekly reports, and the web dashboard — require a license key.
+Core analytics are free. Premium features — health scoring, fraud detection, Discord alerts, weekly reports, and the web dashboard — require a license key.
 
-**Contact:** mohdmxmxm@gmail.com or Discord: **mohd_gs**
+**Contact:** mohdmxmxm@gmail.com · Discord: **mohd_gs**
 
 ---
 
-## Technical Requirements
+## Compatibility
 
-| Requirement | Version |
-|-------------|---------|
+| Component | Requirement |
+|-----------|-------------|
 | Minecraft | 26.1.x |
 | Fabric Loader | 0.19.2+ |
 | Java | 25 |
-| Solidus Core | Any version (optional — mod works in standalone mode) |
+| Solidus Core | Any version (optional — works in standalone mode) |
 
-**Server-side only.** No client mod needed. Works on any Fabric server.
+Server-side only. No client mod needed.
 
 ---
 
 ## License
 
-This software is proprietary and distributed under the Solidus Analytics End-User License Agreement (EULA). See the [LICENSE](LICENSE) file for details. Premium features require a valid license key.
+This software is proprietary and distributed under the Solidus Analytics End-User License Agreement (EULA). See [LICENSE](LICENSE) for details. Premium features require a valid license key.
+
+---
+
+Built by [MOHD_Gs](https://github.com/mohammad-salah-qasiaa)
