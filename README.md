@@ -21,6 +21,14 @@ Solidus Analytics is the intelligence layer for [Solidus Core](https://github.co
 
 No VPS required. No open ports needed. Encrypted data pushed to GitHub Pages — decrypted only in your browser. Premium features available with a license key.
 
+## Designed For
+
+- Economy balancing
+- Detecting inflation early
+- Monitoring player wealth
+- Server staff oversight
+- Long-term economy analysis
+
 ---
 
 ## Solidus Ecosystem
@@ -213,7 +221,7 @@ Generate any time: `/analytics report weekly`
 
 ## Get Premium
 
-Core analytics are free. Premium features — health scoring, fraud detection, Discord alerts, weekly reports, and the web dashboard — require a license key.
+Solidus Analytics includes a free core feature set. Advanced capabilities — health scoring, fraud detection, Discord alerts, weekly reports, and the live web dashboard — require a premium license.
 
 **Contact:** mohdmxmxm@gmail.com · Discord: **mohd_gs**
 
