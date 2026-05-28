@@ -6,6 +6,7 @@
 
 **Understand your server economy in real time — from anywhere.**
 
+[![Solidus Integrated](https://img.shields.io/badge/Solidus-Integrated-8B5CF6?style=flat-square)](https://github.com/mohammad-salah-qasiaa/solidus)
 [![Fabric](https://img.shields.io/badge/Fabric-0.19.2+-db4848?style=flat-square)](https://fabricmc.net)
 [![Minecraft](https://img.shields.io/badge/Minecraft-26.1.x-green?style=flat-square)](https://minecraft.net)
 [![Java](https://img.shields.io/badge/Java-25-orange?style=flat-square)](https://adoptium.net)
