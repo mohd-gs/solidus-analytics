@@ -17,7 +17,7 @@
 
 ---
 
-Solidus Analytics is the intelligence layer for [Solidus Core](https://github.com/mohammad-salah-qasiaa/solidus) — tracking every transaction, measuring wealth inequality, detecting inflation trends, catching fraud, and putting it all on a live web dashboard you can access from your phone.
+Solidus Analytics is the intelligence layer for [Solidus Core](https://github.com/mohammad-salah-qasiaa/solidus-core) — tracking every transaction, measuring wealth inequality, detecting inflation trends, catching fraud, and putting it all on a live web dashboard you can access from your phone.
 
 No VPS required. No open ports needed. Encrypted data pushed to GitHub Pages — decrypted only in your browser. Premium features available with a license key.
 
@@ -35,8 +35,9 @@ No VPS required. No open ports needed. Encrypted data pushed to GitHub Pages —
 
 | Project | Description |
 |---------|-------------|
-| [Solidus Core](https://github.com/mohammad-salah-qasiaa/solidus) | Economy engine, server shop, auction house |
+| [Solidus Core](https://github.com/mohammad-salah-qasiaa/solidus-core) | Economy engine, server shop, auction house |
 | **Solidus Analytics** | Economy intelligence dashboard, inflation tracking, fraud detection |
+| [Solidus Governance](https://github.com/mohammad-salah-qasiaa/Solidus-Governance) | Economy administration, taxation, audit, recovery |
 
 ---
 
@@ -115,7 +116,7 @@ If your server has an open port, the dashboard runs directly via an embedded Nan
 
 ### Installation
 
-1. Install [Solidus Core](https://github.com/mohammad-salah-qasiaa/solidus) on your server
+1. Install [Solidus Core](https://github.com/mohammad-salah-qasiaa/solidus-core) on your server
 2. Drop `solidus-analytics.jar` into your `mods/` folder
 3. Start the server — analytics database auto-creates at `config/solidus-analytics/analytics.db`
 
