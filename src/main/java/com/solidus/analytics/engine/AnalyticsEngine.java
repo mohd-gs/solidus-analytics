@@ -2,6 +2,7 @@ package com.solidus.analytics.engine;
 
 import com.solidus.analytics.AnalyticsConfig;
 import com.solidus.analytics.SolidusAnalyticsMod;
+import com.solidus.analytics.dashboard.DashboardManager;
 import com.solidus.analytics.integration.SolidusIntegration;
 import com.solidus.analytics.license.LicenseVerifier;
 import com.solidus.analytics.premium.DiscordWebhookNotifier;
@@ -47,6 +48,10 @@ public class AnalyticsEngine {
     private FraudDetector fraudDetector;
     private DiscordWebhookNotifier discordNotifier;
     private WeeklyReportGenerator weeklyReportGenerator;
+
+    // ── Dashboard Components ─────────────────────────────────
+
+    private DashboardManager dashboardManager;
 
     private volatile boolean initialized = false;
     private volatile boolean premiumEnabled = false;
@@ -123,6 +128,10 @@ public class AnalyticsEngine {
         // ── Step 9: Initialize premium features ──
         initializePremium(configDirPath);
 
+        // ── Step 10: Initialize dashboard manager ──
+        dashboardManager = new DashboardManager(this, configDirPath);
+        dashboardManager.initialize();
+
         initialized = true;
         SolidusAnalyticsMod.LOGGER.info("Solidus Analytics Engine initialized successfully.");
         SolidusAnalyticsMod.LOGGER.info("API Integration: {} | Mode: {}",
@@ -187,7 +196,12 @@ public class AnalyticsEngine {
 
         SolidusAnalyticsMod.LOGGER.info("Shutting down Solidus Analytics Engine...");
 
-        // Stop live metrics polling first
+        // Shut down dashboard manager first (stops web server + GitHub publisher)
+        if (dashboardManager != null) {
+            dashboardManager.shutdown();
+        }
+
+        // Stop live metrics polling
         if (liveMetrics != null) {
             liveMetrics.stop();
         }
@@ -222,6 +236,11 @@ public class AnalyticsEngine {
 
         if (snapshotScheduler != null) {
             snapshotScheduler.onTick(currentTick);
+        }
+
+        // Dashboard periodic data publishing
+        if (dashboardManager != null) {
+            dashboardManager.onTick(currentTick);
         }
 
         // Periodic data cleanup
@@ -296,6 +315,12 @@ public class AnalyticsEngine {
 
     public Path getConfigDirPath() {
         return configDirPath;
+    }
+
+    // ── Dashboard Accessor ──────────────────────────────────
+
+    public DashboardManager getDashboardManager() {
+        return dashboardManager;
     }
 
     private void ensureInitialized() {

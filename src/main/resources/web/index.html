@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solidus Analytics Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- Password Modal (shown if data is encrypted) -->
+    <div id="password-modal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <h2>Dashboard Login</h2>
+            <p>Enter the dashboard password to decrypt the data.</p>
+            <input type="password" id="password-input" placeholder="Password" autocomplete="off">
+            <button id="password-submit" onclick="decryptWithPassword()">Unlock</button>
+            <p id="password-error" class="error" style="display:none;">Incorrect password. Try again.</p>
+        </div>
+    </div>
+
+    <!-- Main Dashboard -->
+    <div id="dashboard" class="dashboard" style="display:none;">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <h1>Solidus Analytics</h1>
+                <span id="server-name" class="server-name"></span>
+            </div>
+            <div class="header-right">
+                <span id="last-update" class="last-update">Loading...</span>
+                <span id="connection-status" class="status-dot disconnected"></span>
+            </div>
+        </header>
+
+        <!-- Health Score Card -->
+        <section id="health-section" class="card health-card">
+            <h2>Economy Health Score</h2>
+            <div class="health-display">
+                <div class="health-score">
+                    <span id="health-value" class="score-value">--</span>
+                    <span id="health-grade" class="score-grade">--</span>
+                </div>
+                <div class="health-summary">
+                    <p id="health-summary-text">Loading...</p>
+                </div>
+            </div>
+            <div class="health-factors">
+                <div class="factor">
+                    <span class="factor-label">Gini Inequality</span>
+                    <div class="factor-bar"><div id="factor-gini" class="factor-fill" style="width:0%"></div></div>
+                    <span id="factor-gini-val" class="factor-value">--</span>
+                </div>
+                <div class="factor">
+                    <span class="factor-label">Inflation Rate</span>
+                    <div class="factor-bar"><div id="factor-inflation" class="factor-fill" style="width:0%"></div></div>
+                    <span id="factor-inflation-val" class="factor-value">--</span>
+                </div>
+                <div class="factor">
+                    <span class="factor-label">Money Growth</span>
+                    <div class="factor-bar"><div id="factor-growth" class="factor-fill" style="width:0%"></div></div>
+                    <span id="factor-growth-val" class="factor-value">--</span>
+                </div>
+                <div class="factor">
+                    <span class="factor-label">Activity</span>
+                    <div class="factor-bar"><div id="factor-activity" class="factor-fill" style="width:0%"></div></div>
+                    <span id="factor-activity-val" class="factor-value">--</span>
+                </div>
+                <div class="factor">
+                    <span class="factor-label">Liquidity</span>
+                    <div class="factor-bar"><div id="factor-liquidity" class="factor-fill" style="width:0%"></div></div>
+                    <span id="factor-liquidity-val" class="factor-value">--</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Live Metrics Row -->
+        <section class="metrics-row">
+            <div class="metric-card">
+                <span class="metric-value" id="metric-volume">--</span>
+                <span class="metric-label">Daily Volume</span>
+            </div>
+            <div class="metric-card">
+                <span class="metric-value" id="metric-transactions">--</span>
+                <span class="metric-label">Transactions</span>
+            </div>
+            <div class="metric-card">
+                <span class="metric-value" id="metric-players">--</span>
+                <span class="metric-label">Active Players</span>
+            </div>
+            <div class="metric-card">
+                <span class="metric-value" id="metric-inflation">--</span>
+                <span class="metric-label">Inflation (24h)</span>
+            </div>
+        </section>
+
+        <!-- Charts Row -->
+        <section class="charts-row">
+            <div class="card chart-card">
+                <h3>Daily Transaction Volume</h3>
+                <canvas id="volume-chart"></canvas>
+            </div>
+            <div class="card chart-card">
+                <h3>Inflation Trend</h3>
+                <canvas id="inflation-chart"></canvas>
+            </div>
+        </section>
+
+        <!-- Snapshot & Inflation Row -->
+        <section class="charts-row">
+            <div class="card chart-card">
+                <h3>Wealth Distribution</h3>
+                <canvas id="wealth-chart"></canvas>
+            </div>
+            <div class="card chart-card">
+                <h3>Money:Goods Ratio</h3>
+                <canvas id="ratio-chart"></canvas>
+            </div>
+        </section>
+
+        <!-- Fraud Alerts & Top Items -->
+        <section class="bottom-row">
+            <div class="card" id="fraud-section">
+                <h3>Fraud Alerts</h3>
+                <div id="fraud-list" class="alert-list">
+                    <p class="no-data">Loading...</p>
+                </div>
+            </div>
+            <div class="card">
+                <h3>Top Traded Items</h3>
+                <div class="items-grid">
+                    <div class="items-column">
+                        <h4>Most Bought</h4>
+                        <ul id="top-bought" class="item-list"></ul>
+                    </div>
+                    <div class="items-column">
+                        <h4>Most Sold</h4>
+                        <ul id="top-sold" class="item-list"></ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Solidus Analytics Dashboard &mdash; Data updates every 60 seconds</p>
+        </footer>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

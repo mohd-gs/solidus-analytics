@@ -59,6 +59,10 @@ dependencies {
     // Include sqlite-jdbc in the final JAR for server-side database access
     include "org.xerial:sqlite-jdbc:3.47.2.0"
 
+    // NanoHTTPD — embedded web server for the analytics dashboard
+    implementation "org.nanohttpd:nanohttpd:2.3.1"
+    include "org.nanohttpd:nanohttpd:2.3.1"
+
     // NOTE: No compile dependency on Solidus!
     // Integration is done via reflection at runtime.
 }

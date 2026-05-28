@@ -1,0 +1,350 @@
+/* ═══════════════════════════════════════════════════════════
+   Solidus Analytics Dashboard — CSS
+   ═══════════════════════════════════════════════════════════ */
+
+:root {
+    --bg-primary: #0f1117;
+    --bg-card: #1a1d27;
+    --bg-hover: #242836;
+    --text-primary: #e4e6ed;
+    --text-secondary: #8b8fa3;
+    --text-muted: #5c6078;
+    --accent-blue: #4f8cff;
+    --accent-green: #34d399;
+    --accent-yellow: #fbbf24;
+    --accent-red: #f87171;
+    --accent-purple: #a78bfa;
+    --border-color: #2a2e3d;
+    --radius: 12px;
+    --shadow: 0 4px 24px rgba(0,0,0,0.3);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.6;
+    min-height: 100vh;
+}
+
+/* ── Modal ────────────────────────────────────────────────── */
+
+.modal {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.8);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    padding: 2rem;
+    width: 90%; max-width: 400px;
+    text-align: center;
+    box-shadow: var(--shadow);
+}
+
+.modal-content h2 {
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.modal-content p {
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+}
+
+.modal-content input {
+    width: 100%; padding: 0.75rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 1rem;
+    margin-bottom: 1rem;
+}
+
+.modal-content button {
+    width: 100%; padding: 0.75rem;
+    background: var(--accent-blue);
+    color: white; border: none;
+    border-radius: 8px; font-size: 1rem;
+    cursor: pointer; font-weight: 600;
+}
+
+.modal-content button:hover {
+    background: #3a7bef;
+}
+
+.error {
+    color: var(--accent-red);
+    font-size: 0.85rem;
+    margin-top: 0.5rem;
+}
+
+/* ── Header ───────────────────────────────────────────────── */
+
+.header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 1.25rem 2rem;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.header h1 {
+    font-size: 1.5rem; font-weight: 700;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.server-name {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin-left: 1rem;
+}
+
+.header-right {
+    display: flex; align-items: center; gap: 0.75rem;
+}
+
+.last-update {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.status-dot.connected { background: var(--accent-green); }
+.status-dot.disconnected { background: var(--accent-red); }
+
+/* ── Cards ────────────────────────────────────────────────── */
+
+.dashboard {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 1.5rem;
+}
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    box-shadow: var(--shadow);
+}
+
+.card h2, .card h3 {
+    margin-bottom: 1rem;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+/* ── Health Score ──────────────────────────────────────────── */
+
+.health-card { margin-bottom: 1.5rem; }
+
+.health-display {
+    display: flex; align-items: center; gap: 2rem;
+    margin-bottom: 1.5rem;
+}
+
+.health-score {
+    text-align: center; min-width: 120px;
+}
+
+.score-value {
+    font-size: 3rem; font-weight: 800;
+    display: block;
+    line-height: 1;
+}
+
+.score-grade {
+    font-size: 1.25rem; font-weight: 700;
+    display: block; margin-top: 0.25rem;
+}
+
+.health-summary {
+    flex: 1;
+}
+
+.health-summary p {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+.score-excellent { color: var(--accent-green); }
+.score-good { color: #6ee7b7; }
+.score-fair { color: var(--accent-yellow); }
+.score-poor { color: var(--accent-red); }
+.score-critical { color: #dc2626; }
+
+/* ── Factor Bars ──────────────────────────────────────────── */
+
+.health-factors {
+    display: grid; gap: 0.5rem;
+}
+
+.factor {
+    display: grid; grid-template-columns: 120px 1fr 40px;
+    align-items: center; gap: 0.75rem;
+}
+
+.factor-label {
+    font-size: 0.85rem; color: var(--text-secondary);
+}
+
+.factor-bar {
+    background: var(--bg-primary);
+    border-radius: 4px; height: 8px;
+    overflow: hidden;
+}
+
+.factor-fill {
+    height: 100%; border-radius: 4px;
+    transition: width 0.5s ease;
+    background: linear-gradient(90deg, var(--accent-blue), var(--accent-green));
+}
+
+.factor-value {
+    font-size: 0.85rem; text-align: right;
+    color: var(--text-primary); font-weight: 600;
+}
+
+/* ── Metrics Row ──────────────────────────────────────────── */
+
+.metrics-row {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 1rem; margin-bottom: 1.5rem;
+}
+
+.metric-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    text-align: center;
+    box-shadow: var(--shadow);
+}
+
+.metric-value {
+    display: block; font-size: 1.75rem;
+    font-weight: 700; color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.metric-label {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* ── Charts ───────────────────────────────────────────────── */
+
+.charts-row {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 1rem; margin-bottom: 1.5rem;
+}
+
+.chart-card {
+    min-height: 280px;
+}
+
+.chart-card canvas {
+    max-height: 240px;
+}
+
+/* ── Bottom Row ───────────────────────────────────────────── */
+
+.bottom-row {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 1rem; margin-bottom: 1.5rem;
+}
+
+.alert-list {
+    max-height: 300px; overflow-y: auto;
+}
+
+.alert-item {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+    display: flex; justify-content: space-between;
+    align-items: center;
+}
+
+.alert-item:last-child { border-bottom: none; }
+
+.alert-severity {
+    font-size: 0.7rem; font-weight: 700;
+    padding: 0.15rem 0.5rem; border-radius: 4px;
+    text-transform: uppercase;
+}
+
+.alert-severity.high { background: rgba(248,113,113,0.2); color: var(--accent-red); }
+.alert-severity.medium { background: rgba(251,191,36,0.2); color: var(--accent-yellow); }
+.alert-severity.low { background: rgba(79,140,255,0.2); color: var(--accent-blue); }
+
+.alert-player { font-weight: 600; }
+.alert-desc { font-size: 0.8rem; color: var(--text-secondary); }
+
+.no-data { color: var(--text-muted); text-align: center; padding: 2rem; }
+
+/* ── Top Items ────────────────────────────────────────────── */
+
+.items-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
+}
+
+.items-column h4 {
+    color: var(--text-secondary);
+    font-size: 0.85rem; margin-bottom: 0.5rem;
+    text-transform: uppercase;
+}
+
+.item-list {
+    list-style: none;
+}
+
+.item-list li {
+    display: flex; justify-content: space-between;
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.9rem;
+}
+
+.item-list li:last-child { border-bottom: none; }
+
+.item-name { color: var(--text-primary); }
+.item-qty { color: var(--accent-blue); font-weight: 600; }
+
+/* ── Footer ───────────────────────────────────────────────── */
+
+.footer {
+    text-align: center; padding: 1.5rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+/* ── Responsive ───────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+    .metrics-row { grid-template-columns: repeat(2, 1fr); }
+    .charts-row { grid-template-columns: 1fr; }
+    .bottom-row { grid-template-columns: 1fr; }
+    .health-display { flex-direction: column; text-align: center; }
+}
+
+@media (max-width: 600px) {
+    .metrics-row { grid-template-columns: 1fr; }
+    .header { flex-direction: column; gap: 0.5rem; }
+    .factor { grid-template-columns: 80px 1fr 30px; }
+}

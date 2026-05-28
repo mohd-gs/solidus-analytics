@@ -1,5 +1,6 @@
 package com.solidus.analytics.commands;
 
+import com.solidus.analytics.dashboard.DashboardManager;
 import com.solidus.analytics.engine.AnalyticsEngine;
 import com.solidus.analytics.license.LicenseVerifier;
 import com.solidus.analytics.premium.EconomyHealthScore;
@@ -74,6 +75,34 @@ public class PremiumCommand {
                 .requires(source -> source.hasPermission(2))
                 .then(Commands.literal("weekly")
                     .executes(context -> executeWeeklyReport(context, engine))))
+
+            // ── Dashboard Commands ──────────────────────────
+
+            // /analytics dashboard status — Show dashboard status
+            .then(Commands.literal("dashboard")
+                .requires(source -> source.hasPermission(3))
+                .executes(context -> executeDashboardStatus(context, engine))
+
+                // /analytics dashboard setup <password>
+                .then(Commands.literal("setup")
+                    .then(Commands.argument("password", net.minecraft.commands.arguments.MessageArgument.message())
+                        .executes(context -> executeDashboardSetup(context, engine))))
+
+                // /analytics dashboard unlock <password>
+                .then(Commands.literal("unlock")
+                    .then(Commands.argument("password", net.minecraft.commands.arguments.MessageArgument.message())
+                        .executes(context -> executeDashboardUnlock(context, engine))))
+
+                // /analytics dashboard github <token> <owner> <repo>
+                .then(Commands.literal("github")
+                    .then(Commands.argument("token", net.minecraft.commands.arguments.MessageArgument.message())
+                        .then(Commands.argument("owner", net.minecraft.commands.arguments.StringArgumentType.word())
+                            .then(Commands.argument("repo", net.minecraft.commands.arguments.StringArgumentType.word())
+                                .executes(context -> executeDashboardGitHub(context, engine))))))
+
+                // /analytics dashboard publish — Force publish data now
+                .then(Commands.literal("publish")
+                    .executes(context -> executeDashboardPublish(context, engine))))
         );
     }
 
@@ -322,6 +351,111 @@ public class PremiumCommand {
         sendFeedback(source, styled("  If you have a universal key (fingerprint: ANY),", ChatFormatting.GRAY));
         sendFeedback(source, styled("  you do not need to provide this fingerprint.", ChatFormatting.DARK_GRAY));
         sendFeedback(source, styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
+        return 1;
+    }
+
+    // ── Subcommand: Dashboard Status ────────────────────────
+
+    private static int executeDashboardStatus(CommandContext<CommandSourceStack> context, AnalyticsEngine engine) {
+        CommandSourceStack source = context.getSource();
+        DashboardManager dm = engine.getDashboardManager();
+
+        if (dm == null) {
+            sendFeedback(source, styled("  Dashboard system not available.", ChatFormatting.RED));
+            return 0;
+        }
+
+        sendFeedback(source, styledBold("═══════ Dashboard Status ═══════", ChatFormatting.GOLD));
+        sendFeedback(source, styled("  Encryption: ", ChatFormatting.GRAY)
+            .append(styled(dm.getEncryptionStatus(), ChatFormatting.WHITE)));
+        sendFeedback(source, styled("  GitHub Pages: ", ChatFormatting.GRAY)
+            .append(styled(dm.getGitHubStatus(), ChatFormatting.WHITE)));
+        sendFeedback(source, styled("  Web Server: ", ChatFormatting.GRAY)
+            .append(styled(dm.getWebServerStatus(), ChatFormatting.WHITE)));
+        sendFeedback(source, styledBold("═══════════════════════════════════", ChatFormatting.GOLD));
+        return 1;
+    }
+
+    // ── Subcommand: Dashboard Setup ─────────────────────────
+
+    private static int executeDashboardSetup(CommandContext<CommandSourceStack> context, AnalyticsEngine engine) {
+        CommandSourceStack source = context.getSource();
+        DashboardManager dm = engine.getDashboardManager();
+
+        if (dm == null) {
+            sendFeedback(source, styled("  Dashboard system not available.", ChatFormatting.RED));
+            return 0;
+        }
+
+        String password = net.minecraft.commands.arguments.MessageArgument.getMessage(context, "password").getString();
+        String result = dm.setupEncryption(password);
+
+        sendFeedback(source, styled("  " + result, ChatFormatting.GREEN));
+        return 1;
+    }
+
+    // ── Subcommand: Dashboard Unlock ────────────────────────
+
+    private static int executeDashboardUnlock(CommandContext<CommandSourceStack> context, AnalyticsEngine engine) {
+        CommandSourceStack source = context.getSource();
+        DashboardManager dm = engine.getDashboardManager();
+
+        if (dm == null) {
+            sendFeedback(source, styled("  Dashboard system not available.", ChatFormatting.RED));
+            return 0;
+        }
+
+        String password = net.minecraft.commands.arguments.MessageArgument.getMessage(context, "password").getString();
+        String result = dm.unlockEncryption(password);
+
+        if (result.contains("unlocked")) {
+            sendFeedback(source, styled("  " + result, ChatFormatting.GREEN));
+        } else {
+            sendFeedback(source, styled("  " + result, ChatFormatting.RED));
+        }
+        return 1;
+    }
+
+    // ── Subcommand: Dashboard GitHub ────────────────────────
+
+    private static int executeDashboardGitHub(CommandContext<CommandSourceStack> context, AnalyticsEngine engine) {
+        CommandSourceStack source = context.getSource();
+        DashboardManager dm = engine.getDashboardManager();
+
+        if (dm == null) {
+            sendFeedback(source, styled("  Dashboard system not available.", ChatFormatting.RED));
+            return 0;
+        }
+
+        String token = net.minecraft.commands.arguments.MessageArgument.getMessage(context, "token").getString();
+        String owner = net.minecraft.commands.arguments.StringArgumentType.getString(context, "owner");
+        String repo = net.minecraft.commands.arguments.StringArgumentType.getString(context, "repo");
+
+        String result = dm.setupGitHub(token, owner, repo);
+        sendFeedback(source, styled("  " + result, ChatFormatting.GREEN));
+        return 1;
+    }
+
+    // ── Subcommand: Dashboard Publish ───────────────────────
+
+    private static int executeDashboardPublish(CommandContext<CommandSourceStack> context, AnalyticsEngine engine) {
+        CommandSourceStack source = context.getSource();
+        DashboardManager dm = engine.getDashboardManager();
+
+        if (dm == null) {
+            sendFeedback(source, styled("  Dashboard system not available.", ChatFormatting.RED));
+            return 0;
+        }
+
+        sendFeedback(source, styled("  Publishing dashboard data...", ChatFormatting.YELLOW));
+
+        engine.getDatabase().getExecutor().submit(() -> {
+            dm.publishData();
+            source.getServer().execute(() -> {
+                sendFeedback(source, styled("  Dashboard data published successfully!", ChatFormatting.GREEN));
+            });
+        });
+
         return 1;
     }
 
