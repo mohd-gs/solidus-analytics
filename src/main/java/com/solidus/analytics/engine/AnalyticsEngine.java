@@ -105,6 +105,11 @@ public class AnalyticsEngine {
         SolidusAnalyticsMod.LOGGER.info("Economy DB path: {}", economyDbPath);
         SolidusAnalyticsMod.LOGGER.info("Auctions DB path: {}", auctionsDbPath);
 
+        // Provide the economy DB path to the integration bridge for fallback queries
+        if (SolidusIntegration.getInstance() != null) {
+            SolidusIntegration.getInstance().setEconomyDbPath(economyDbPath);
+        }
+
         // ── Step 4: Initialize analytics database ──
         database = new AnalyticsDatabase(configDir);
         database.initialize();

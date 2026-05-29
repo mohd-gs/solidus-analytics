@@ -5,6 +5,10 @@ import com.solidus.analytics.SolidusAnalyticsMod;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.lang.reflect.Method;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -44,6 +48,9 @@ public final class SolidusIntegration {
     private Method getEconomyEngineMethod;
     private Method getStorageMethod;
     private Method getCachedPlayerCountMethod;
+
+    /** Path to the economy database for direct fallback queries */
+    private volatile String economyDbPath;
 
     private SolidusIntegration(Object apiInstance, Class<?> apiClass) {
         this.apiInstance = apiInstance;
@@ -170,21 +177,64 @@ public final class SolidusIntegration {
 
     /**
      * Gets the cached player count from Solidus's SQLiteStorage.
+     * Falls back to a direct database query if the reflected method is unavailable.
      *
      * @return The number of cached players, or -1 if unavailable
      */
     public int getCachedPlayerCount() {
-        if (!isAvailable()) return -1;
-        try {
-            Object engine = getEconomyEngineMethod.invoke(apiInstance);
-            if (engine == null) return -1;
-            Object storage = getStorageMethod.invoke(engine);
-            if (storage == null) return -1;
-            return (int) getCachedPlayerCountMethod.invoke(storage);
-        } catch (Exception e) {
-            SolidusAnalyticsMod.LOGGER.error("Failed to call getCachedPlayerCount via reflection", e);
-            return -1;
+        // Strategy 1: Try reflected API method (if available)
+        if (isAvailable() && getCachedPlayerCountMethod != null) {
+            try {
+                Object engine = getEconomyEngineMethod.invoke(apiInstance);
+                if (engine == null) return -1;
+                Object storage = getStorageMethod.invoke(engine);
+                if (storage == null) return -1;
+                return (int) getCachedPlayerCountMethod.invoke(storage);
+            } catch (Exception e) {
+                SolidusAnalyticsMod.LOGGER.debug("Reflected getCachedPlayerCount failed, trying DB fallback", e);
+            }
         }
+
+        // Strategy 2: Direct database fallback (always available)
+        return getPlayerCountFromDB();
+    }
+
+    /**
+     * Sets the economy database path for direct fallback queries.
+     * Called by AnalyticsEngine after database paths are resolved.
+     *
+     * @param economyDbPath The path to the economy.db file
+     */
+    public void setEconomyDbPath(String economyDbPath) {
+        this.economyDbPath = economyDbPath;
+    }
+
+    /**
+     * Gets the player count directly from the economy database.
+     * This is a fallback for when the reflected API method is unavailable.
+     *
+     * @return The number of players in the database, or -1 on error
+     */
+    private int getPlayerCountFromDB() {
+        if (economyDbPath == null) return -1;
+
+        String dbUrl = "jdbc:sqlite:" + economyDbPath;
+        String sql = "SELECT COUNT(*) as player_count FROM player_balances";
+
+        try (Connection conn = DriverManager.getConnection(dbUrl)) {
+            try (var stmt = conn.createStatement()) {
+                stmt.execute("PRAGMA query_only = ON");
+            }
+            try (var stmt = conn.createStatement();
+                 ResultSet rs = stmt.executeQuery(sql)) {
+                if (rs.next()) {
+                    return rs.getInt("player_count");
+                }
+            }
+        } catch (SQLException e) {
+            SolidusAnalyticsMod.LOGGER.debug("Failed to query player count from economy.db", e);
+        }
+        return -1;
     }
 
     // ── Internal ───────────────────────────────────────────
@@ -202,7 +252,15 @@ public final class SolidusIntegration {
 
             // SQLiteStorage methods
             Class<?> storageClass = Class.forName("com.solidus.economy.SQLiteStorage");
-            getCachedPlayerCountMethod = storageClass.getMethod("getCachedPlayerCount");
+            try {
+                getCachedPlayerCountMethod = storageClass.getMethod("getCachedPlayerCount");
+            } catch (NoSuchMethodException e) {
+                // This method may not exist in older versions of Solidus Core.
+                // The getCachedPlayerCount() method will use a direct DB query fallback.
+                SolidusAnalyticsMod.LOGGER.info(
+                    "SQLiteStorage.getCachedPlayerCount() not found in Solidus Core. "
+                    + "Will use direct DB query fallback for player counts.");
+            }
 
             // TransactionLog methods
             Class<?> transactionLogClass = Class.forName("com.solidus.economy.TransactionLog");

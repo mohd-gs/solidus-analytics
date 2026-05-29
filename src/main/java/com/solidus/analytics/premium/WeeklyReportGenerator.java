@@ -83,23 +83,20 @@ public class WeeklyReportGenerator {
      *
      * <p>This prevents duplicate weekly reports when the server restarts on a Monday.
      * The week key is stored in the {@code analytics_metadata} table, which persists
-     * across server restarts. If the table doesn't exist yet, it is created on first access.</p>
+     * across server restarts.</p>
      *
      * @return The last week key (year * 100 + week number), or -1 if not found
      */
     private int loadLastReportWeekFromDB() {
         try {
-            // Ensure the metadata table exists
-            database.execute("CREATE TABLE IF NOT EXISTS analytics_metadata ("
-                + "key TEXT PRIMARY KEY, "
-                + "value TEXT NOT NULL)");
-
-            var result = database.query("SELECT value FROM analytics_metadata WHERE key = 'last_weekly_report_week'");
-            if (result != null && result.next()) {
-                int weekKey = result.getInt(1);
+            String value = database.getMetadataValue("last_weekly_report_week");
+            if (value != null) {
+                int weekKey = Integer.parseInt(value);
                 SolidusAnalyticsMod.LOGGER.info("Weekly report: loaded last report week from DB: {}", weekKey);
                 return weekKey;
             }
+        } catch (NumberFormatException e) {
+            SolidusAnalyticsMod.LOGGER.warn("Invalid last report week value in DB, starting fresh", e);
         } catch (Exception e) {
             SolidusAnalyticsMod.LOGGER.debug("Could not load last report week from DB, starting fresh", e);
         }
@@ -109,7 +106,8 @@ public class WeeklyReportGenerator {
     /**
      * Persists the last report week key to the analytics database.
      *
-     * <p>Uses INSERT OR REPLACE (SQLite upsert) to atomically update the value.
+     * <p>Uses the typed setMetadataValue method which uses a parameterized query
+     * internally, preventing SQL injection and ensuring thread-safe access.
      * This ensures that even if the server crashes after generating a report,
      * the next startup will know that report was already generated.</p>
      *
@@ -117,8 +115,7 @@ public class WeeklyReportGenerator {
      */
     private void persistLastReportWeek(int weekKey) {
         try {
-            database.execute("INSERT OR REPLACE INTO analytics_metadata (key, value) "
-                + "VALUES ('last_weekly_report_week', '" + weekKey + "')");
+            database.setMetadataValue("last_weekly_report_week", String.valueOf(weekKey));
         } catch (Exception e) {
             SolidusAnalyticsMod.LOGGER.warn("Failed to persist last report week to DB", e);
         }

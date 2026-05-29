@@ -226,35 +226,35 @@ public class AnalyticsConfig {
         }
     }
 
-    // ── Getters ─────────────────────────────────────────────
+    // ── Getters (synchronized for thread safety) ──────────
 
-    public int getSnapshotIntervalMinutes() { return snapshotIntervalMinutes; }
-    public int getPollingIntervalSeconds() { return pollingIntervalSeconds; }
-    public int getDataRetentionDays() { return dataRetentionDays; }
-    public int getCleanupIntervalHours() { return cleanupIntervalHours; }
-    public String getDiscordWebhookUrl() { return discordWebhookUrl; }
-    public boolean isDiscordEnabled() { return discordEnabled; }
-    public boolean isNotifyFraud() { return notifyFraud; }
-    public boolean isNotifyInflation() { return notifyInflation; }
-    public boolean isNotifyDailySummary() { return notifyDailySummary; }
-    public boolean isNotifyHealthScore() { return notifyHealthScore; }
-    public double getHealthScoreAlertThreshold() { return healthScoreAlertThreshold; }
-    public String getFraudMinSeverity() { return fraudMinSeverity; }
+    public synchronized int getSnapshotIntervalMinutes() { return snapshotIntervalMinutes; }
+    public synchronized int getPollingIntervalSeconds() { return pollingIntervalSeconds; }
+    public synchronized int getDataRetentionDays() { return dataRetentionDays; }
+    public synchronized int getCleanupIntervalHours() { return cleanupIntervalHours; }
+    public synchronized String getDiscordWebhookUrl() { return discordWebhookUrl; }
+    public synchronized boolean isDiscordEnabled() { return discordEnabled; }
+    public synchronized boolean isNotifyFraud() { return notifyFraud; }
+    public synchronized boolean isNotifyInflation() { return notifyInflation; }
+    public synchronized boolean isNotifyDailySummary() { return notifyDailySummary; }
+    public synchronized boolean isNotifyHealthScore() { return notifyHealthScore; }
+    public synchronized double getHealthScoreAlertThreshold() { return healthScoreAlertThreshold; }
+    public synchronized String getFraudMinSeverity() { return fraudMinSeverity; }
 
 
-    // ── Setters ─────────────────────────────────────────────
+    // ── Setters (synchronized for thread safety) ───────────
 
-    public void setSnapshotIntervalMinutes(int minutes) {
+    public synchronized void setSnapshotIntervalMinutes(int minutes) {
         this.snapshotIntervalMinutes = minutes;
         properties.setProperty("snapshot.interval.minutes", String.valueOf(minutes));
     }
 
-    public void setDiscordWebhookUrl(String url) {
+    public synchronized void setDiscordWebhookUrl(String url) {
         this.discordWebhookUrl = url;
         properties.setProperty("discord.webhook.url", url);
     }
 
-    public void setDiscordEnabled(boolean enabled) {
+    public synchronized void setDiscordEnabled(boolean enabled) {
         this.discordEnabled = enabled;
         properties.setProperty("discord.enabled", String.valueOf(enabled));
     }

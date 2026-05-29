@@ -95,6 +95,13 @@ public class AnalyticsDatabase {
         )
     """;
 
+    private static final String CREATE_METADATA_TABLE = """
+        CREATE TABLE IF NOT EXISTS analytics_metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    """;
+
     // ── Fields ─────────────────────────────────────────────
 
     private final ExecutorService asyncExecutor;
@@ -189,6 +196,7 @@ public class AnalyticsDatabase {
                 stmt.execute(CREATE_SNAPSHOTS_INDEX);
                 stmt.execute(CREATE_DAILY_METRICS_TABLE);
                 stmt.execute(CREATE_ITEM_METRICS_TABLE);
+                stmt.execute(CREATE_METADATA_TABLE);
             }
 
             initialized = true;
@@ -682,6 +690,68 @@ public class AnalyticsDatabase {
             rs.getInt("total_quantity"),
             rs.getLong("total_value")
         );
+    }
+
+    // ── Metadata Operations ───────────────────────────────
+
+    /**
+     * Gets a metadata value by key.
+     *
+     * @param key The metadata key
+     * @return The metadata value, or null if not found
+     */
+    public String getMetadataValue(String key) {
+        ensureInitialized();
+        String sql = "SELECT value FROM analytics_metadata WHERE key = ?";
+        synchronized (connectionLock) {
+            try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
+                ps.setString(1, key);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        return rs.getString("value");
+                    }
+                }
+            } catch (SQLException e) {
+                SolidusAnalyticsMod.LOGGER.error("Failed to get metadata value for key: {}", key, e);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Sets a metadata value (upsert).
+     *
+     * @param key   The metadata key
+     * @param value The metadata value
+     */
+    public void setMetadataValue(String key, String value) {
+        ensureInitialized();
+        String sql = "INSERT OR REPLACE INTO analytics_metadata (key, value) VALUES (?, ?)";
+        synchronized (connectionLock) {
+            try (PreparedStatement ps = persistentConnection.prepareStatement(sql)) {
+                ps.setString(1, key);
+                ps.setString(2, value);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                SolidusAnalyticsMod.LOGGER.error("Failed to set metadata value for key: {}", key, e);
+            }
+        }
+    }
+
+    /**
+     * Executes a raw SQL statement (for administrative/migration use only).
+     * Should NOT be used for regular operations — use the typed methods instead.
+     *
+     * @param sql The SQL statement to execute
+     * @throws SQLException If the execution fails
+     */
+    public void executeRaw(String sql) throws SQLException {
+        ensureInitialized();
+        synchronized (connectionLock) {
+            try (Statement stmt = persistentConnection.createStatement()) {
+                stmt.execute(sql);
+            }
+        }
     }
 
     private void ensureInitialized() {
