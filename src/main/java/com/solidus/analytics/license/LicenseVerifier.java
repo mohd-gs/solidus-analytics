@@ -257,15 +257,18 @@ public final class LicenseVerifier {
      */
     public static String computeServerFingerprint() {
         try {
-            String identity = System.getProperty("user.name", "unknown")
-                + ":" + java.net.InetAddress.getLocalHost().getHostName()
-                + ":" + Path.of(".").toAbsolutePath().hashCode();
+            String raw = "";
+            try {
+                raw += net.fabricmc.loader.api.FabricLoader.getInstance()
+                    .getGameDir().toAbsolutePath().toString();
+            } catch (Exception ignored) {}
+            raw += java.net.InetAddress.getLocalHost().getHostName();
 
-            MessageDigest sha256 = MessageDigest.getInstance("SHA-256");
-            byte[] hash = sha256.digest(identity.getBytes(StandardCharsets.UTF_8));
-            return bytesToHex(hash).substring(0, 16);
-        } catch (NoSuchAlgorithmException | IOException e) {
-            return "error-" + Integer.toHexString(System.identityHashCode(LicenseVerifier.class));
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(raw.getBytes(StandardCharsets.UTF_8));
+            return bytesToHex(hash).substring(0, 16).toUpperCase();
+        } catch (Exception e) {
+            return "UNKNOWN";
         }
     }
 
