@@ -95,7 +95,10 @@ public class AnalyticsEngine {
         apiIntegrationAvailable = SolidusIntegration.initialize();
 
         // ── Step 3: Resolve database paths ──
-        Path solidusConfigDir = Path.of(".").toAbsolutePath().resolve("config").resolve("solidus");
+        // Fix: Use FabricLoader API for reliable path resolution instead of
+        // Path.of(".") which depends on the working directory.
+        Path solidusConfigDir = net.fabricmc.loader.api.FabricLoader.getInstance()
+            .getGameDir().resolve("config").resolve("solidus");
         economyDbPath = solidusConfigDir.resolve("economy.db").toAbsolutePath().toString();
         auctionsDbPath = solidusConfigDir.resolve("auctions.db").toAbsolutePath().toString();
 
@@ -113,11 +116,13 @@ public class AnalyticsEngine {
 
         // ── Step 5: Initialize live metrics tracker ──
         liveMetrics = new LiveMetricsTracker(database, economyDbPath);
+        liveMetrics.setPollingIntervalSeconds(config.getPollingIntervalSeconds());
         liveMetrics.start();
 
         // ── Step 6: Initialize snapshot scheduler ──
         snapshotScheduler = new SnapshotScheduler(database, economyDbPath, auctionsDbPath);
         snapshotScheduler.setEngineRef(this);
+        snapshotScheduler.setSnapshotIntervalMinutes(config.getSnapshotIntervalMinutes());
 
         // ── Step 7: Initialize inflation calculator ──
         inflationCalculator = new InflationCalculator(database, economyDbPath, auctionsDbPath);

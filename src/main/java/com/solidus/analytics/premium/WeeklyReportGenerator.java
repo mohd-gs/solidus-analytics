@@ -43,13 +43,18 @@ public class WeeklyReportGenerator {
 
     private final AnalyticsEngine engine;
     private final Path reportsDir;
+    private final AnalyticsDatabase database;
 
-    /** Track the last week number we generated a report for */
+    /** Track the last week number we generated a report for — persisted in DB for restart resilience */
     private volatile int lastReportWeek = -1;
 
     public WeeklyReportGenerator(AnalyticsEngine engine, Path configDir) {
         this.engine = engine;
+        this.database = engine.getDatabase();
         this.reportsDir = configDir.resolve("reports");
+
+        // Load last report week from DB to prevent duplicate reports after restart
+        this.lastReportWeek = loadLastReportWeekFromDB();
     }
 
     /**
@@ -69,7 +74,54 @@ public class WeeklyReportGenerator {
         if (weekKey == lastReportWeek) return;
 
         lastReportWeek = weekKey;
+        persistLastReportWeek(weekKey);
         generateReport();
+    }
+
+    /**
+     * Loads the last report week key from the analytics database.
+     *
+     * <p>This prevents duplicate weekly reports when the server restarts on a Monday.
+     * The week key is stored in the {@code analytics_metadata} table, which persists
+     * across server restarts. If the table doesn't exist yet, it is created on first access.</p>
+     *
+     * @return The last week key (year * 100 + week number), or -1 if not found
+     */
+    private int loadLastReportWeekFromDB() {
+        try {
+            // Ensure the metadata table exists
+            database.execute("CREATE TABLE IF NOT EXISTS analytics_metadata ("
+                + "key TEXT PRIMARY KEY, "
+                + "value TEXT NOT NULL)");
+
+            var result = database.query("SELECT value FROM analytics_metadata WHERE key = 'last_weekly_report_week'");
+            if (result != null && result.next()) {
+                int weekKey = result.getInt(1);
+                SolidusAnalyticsMod.LOGGER.info("Weekly report: loaded last report week from DB: {}", weekKey);
+                return weekKey;
+            }
+        } catch (Exception e) {
+            SolidusAnalyticsMod.LOGGER.debug("Could not load last report week from DB, starting fresh", e);
+        }
+        return -1;
+    }
+
+    /**
+     * Persists the last report week key to the analytics database.
+     *
+     * <p>Uses INSERT OR REPLACE (SQLite upsert) to atomically update the value.
+     * This ensures that even if the server crashes after generating a report,
+     * the next startup will know that report was already generated.</p>
+     *
+     * @param weekKey The week key (year * 100 + week number)
+     */
+    private void persistLastReportWeek(int weekKey) {
+        try {
+            database.execute("INSERT OR REPLACE INTO analytics_metadata (key, value) "
+                + "VALUES ('last_weekly_report_week', '" + weekKey + "')");
+        } catch (Exception e) {
+            SolidusAnalyticsMod.LOGGER.warn("Failed to persist last report week to DB", e);
+        }
     }
 
     /**

@@ -51,7 +51,7 @@ public class SolidusAnalyticsMod implements DedicatedServerModInitializer {
     public static final String MOD_NAME = "Solidus Analytics";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_NAME);
 
-    private static AnalyticsEngine analyticsEngine;
+    private static volatile AnalyticsEngine analyticsEngine;
 
     @Override
     public void onInitializeServer() {
@@ -63,9 +63,11 @@ public class SolidusAnalyticsMod implements DedicatedServerModInitializer {
         // Register server started event — initialize engine after Solidus is ready
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             // Resolve the config directory for this mod
-            java.nio.file.Path configDir = java.nio.file.Path.of(".")
-                .toAbsolutePath()
-                .resolve("config")
+            // Fix: Use FabricLoader API for reliable config path resolution.
+            // Previous version used Path.of(".") which depends on the server's
+            // working directory and could fail in Docker/non-standard setups.
+            java.nio.file.Path configDir = net.fabricmc.loader.api.FabricLoader.getInstance()
+                .getConfigDir()
                 .resolve("solidus-analytics");
 
             // Ensure config directory exists

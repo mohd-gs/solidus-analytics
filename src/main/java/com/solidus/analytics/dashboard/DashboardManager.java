@@ -105,7 +105,11 @@ public class DashboardManager {
         tickCounter++;
         if (tickCounter >= publishIntervalTicks) {
             tickCounter = 0;
-            publishData();
+            // Fix: Submit publishData() to the analytics executor instead of
+            // running on the server tick thread. The previous version performed
+            // synchronous SQLite queries on the tick thread, causing periodic
+            // lag spikes every 60 seconds.
+            engine.getDatabase().getExecutor().submit(this::publishData);
         }
     }
 
@@ -210,8 +214,13 @@ public class DashboardManager {
             SolidusAnalyticsMod.LOGGER.info("Dashboard encryption not set up. "
                 + "Use /analytics dashboard setup <password> to enable encryption.");
         } else {
-            SolidusAnalyticsMod.LOGGER.info("Dashboard encryption hash found. "
-                + "Use /analytics dashboard unlock <password> to unlock.");
+            // Try auto-unlock from environment variable first
+            boolean autoUnlocked = tryAutoUnlock(passwordHash);
+            if (!autoUnlocked) {
+                SolidusAnalyticsMod.LOGGER.info("Dashboard encryption hash found. "
+                    + "Use /analytics dashboard unlock <password> to unlock, or set "
+                    + "SOLIDUS_DASHBOARD_PASSWORD env var for automatic unlock on restart.");
+            }
         }
     }
 
@@ -350,6 +359,70 @@ public class DashboardManager {
 
     public boolean isWebServerEnabled() {
         return webServerEnabled;
+    }
+
+    // ── Token Obfuscation ───────────────────────────────────
+
+    /**
+     * Attempts to automatically unlock dashboard encryption on server startup.
+     *
+     * <p>This is essential for production servers with scheduled daily restarts,
+     * where requiring manual {@code /analytics dashboard unlock} after every restart
+     * would cause the dashboard to stop updating during the admin's absence.</p>
+     *
+     * <h3>Auto-Unlock Priority:</h3>
+     * <ol>
+     *   <li><b>Environment variable</b> — {@code SOLIDUS_DASHBOARD_PASSWORD}:
+     *       Set in the server's startup script (e.g., systemd, Docker, or .sh).
+     *       This is the recommended method — the password never touches the
+     *       filesystem and is only visible in the server process environment.</li>
+     *   <li><b>Key file</b> — {@code .dashboard-key} in the config directory:
+     *       A plain-text file containing the password, protected by OS-level
+     *       file permissions (chmod 600). Less secure than env var but
+     *       simpler for non-containerized setups.</li>
+     * </ol>
+     *
+     * <p>Both methods are opt-in. If neither is configured, the admin must
+     * unlock manually after each restart (original behavior).</p>
+     *
+     * @param storedHash The stored password hash to validate against
+     * @return true if auto-unlock succeeded, false otherwise
+     */
+    private boolean tryAutoUnlock(String storedHash) {
+        // Strategy 1: Environment variable
+        String envPassword = System.getenv("SOLIDUS_DASHBOARD_PASSWORD");
+        if (envPassword != null && !envPassword.isBlank()) {
+            if (encryption.unlock(envPassword.toCharArray(), storedHash)) {
+                SolidusAnalyticsMod.LOGGER.info("Dashboard auto-unlocked via SOLIDUS_DASHBOARD_PASSWORD env var.");
+                return true;
+            } else {
+                SolidusAnalyticsMod.LOGGER.warn("SOLIDUS_DASHBOARD_PASSWORD env var set but password incorrect. "
+                    + "Falling back to manual unlock.");
+                return false;
+            }
+        }
+
+        // Strategy 2: Key file (.dashboard-key in config directory)
+        Path keyFile = configDir.resolve(".dashboard-key");
+        if (Files.exists(keyFile)) {
+            try {
+                String keyPassword = Files.readString(keyFile).trim();
+                if (!keyPassword.isBlank()) {
+                    if (encryption.unlock(keyPassword.toCharArray(), storedHash)) {
+                        SolidusAnalyticsMod.LOGGER.info("Dashboard auto-unlocked via .dashboard-key file. "
+                            + "Ensure this file has restricted permissions (chmod 600).");
+                        return true;
+                    } else {
+                        SolidusAnalyticsMod.LOGGER.warn(".dashboard-key file found but password incorrect. "
+                            + "Falling back to manual unlock.");
+                    }
+                }
+            } catch (Exception e) {
+                SolidusAnalyticsMod.LOGGER.warn("Failed to read .dashboard-key file", e);
+            }
+        }
+
+        return false;
     }
 
     // ── Token Obfuscation ───────────────────────────────────

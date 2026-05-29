@@ -51,8 +51,11 @@ public class LiveMetricsTracker {
 
     // ── Polling Configuration ──────────────────────────────
 
-    /** How often to poll for new transactions (in milliseconds) */
-    private static final long POLL_INTERVAL_MS = 30_000L; // 30 seconds
+    /** Default polling interval in milliseconds */
+    private static final long DEFAULT_POLL_INTERVAL_MS = 30_000L; // 30 seconds
+
+    /** How often to poll for new transactions (in milliseconds), configurable via analytics.properties */
+    private volatile long pollIntervalMs = DEFAULT_POLL_INTERVAL_MS;
 
     /** Timestamp of the last transaction we processed */
     private final AtomicLong lastPolledTimestamp = new AtomicLong(0);
@@ -113,7 +116,21 @@ public class LiveMetricsTracker {
         // Schedule periodic polling
         analyticsDb.getExecutor().submit(this::pollingLoop);
 
-        SolidusAnalyticsMod.LOGGER.info("LiveMetricsTracker started. Polling interval: {}ms", POLL_INTERVAL_MS);
+        SolidusAnalyticsMod.LOGGER.info("LiveMetricsTracker started. Polling interval: {}ms", pollIntervalMs);
+    }
+
+    /**
+     * Sets the polling interval from configuration.
+     *
+     * <p>Must be called before {@link #start()}. Converts seconds to milliseconds.
+     * Values are clamped to a minimum of 5 seconds to prevent excessive database polling.</p>
+     *
+     * @param seconds Polling interval in seconds (from analytics.properties)
+     */
+    public void setPollingIntervalSeconds(int seconds) {
+        seconds = Math.max(5, seconds); // Minimum 5 seconds
+        this.pollIntervalMs = seconds * 1000L;
+        SolidusAnalyticsMod.LOGGER.info("Polling interval set to {} seconds ({}ms)", seconds, pollIntervalMs);
     }
 
     /**
@@ -121,7 +138,16 @@ public class LiveMetricsTracker {
      */
     public void stop() {
         running = false;
-        SolidusAnalyticsMod.LOGGER.info("LiveMetricsTracker stopped.");
+        // Fix: Persist current day's metrics before stopping.
+        // Without this, all live metrics for the current day are lost
+        // on server restart since they are only persisted when the date
+        // changes in checkDailyReset().
+        try {
+            forcePersist();
+        } catch (Exception e) {
+            SolidusAnalyticsMod.LOGGER.error("Failed to persist live metrics on shutdown", e);
+        }
+        SolidusAnalyticsMod.LOGGER.info("LiveMetricsTracker stopped. Final metrics persisted.");
     }
 
     // ── Public Read Methods (O(1) from memory) ─────────────
@@ -200,7 +226,7 @@ public class LiveMetricsTracker {
             }
 
             try {
-                Thread.sleep(POLL_INTERVAL_MS);
+                Thread.sleep(pollIntervalMs);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;

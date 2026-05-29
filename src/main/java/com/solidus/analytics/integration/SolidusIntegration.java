@@ -120,12 +120,14 @@ public final class SolidusIntegration {
      */
     @SuppressWarnings("unchecked")
     public CompletableFuture<List<?>> getTopBalances(int limit) {
-        if (!isAvailable()) return null;
+        if (!isAvailable() || getTopBalancesMethod == null) {
+            return CompletableFuture.completedFuture(null);
+        }
         try {
             return (CompletableFuture<List<?>>) getTopBalancesMethod.invoke(apiInstance, limit);
         } catch (Exception e) {
             SolidusAnalyticsMod.LOGGER.error("Failed to call getTopBalances via reflection", e);
-            return null;
+            return CompletableFuture.completedFuture(null);
         }
     }
 
@@ -153,14 +155,16 @@ public final class SolidusIntegration {
      */
     @SuppressWarnings("unchecked")
     public CompletableFuture<List<?>> getTransactions(UUID playerUuid, int limit) {
-        if (!isAvailable()) return null;
+        if (!isAvailable() || getTransactionsMethod == null) {
+            return CompletableFuture.completedFuture(null);
+        }
         try {
             Object transactionLog = getTransactionLog();
-            if (transactionLog == null) return null;
+            if (transactionLog == null) return CompletableFuture.completedFuture(null);
             return (CompletableFuture<List<?>>) getTransactionsMethod.invoke(transactionLog, playerUuid, limit);
         } catch (Exception e) {
             SolidusAnalyticsMod.LOGGER.error("Failed to call getTransactions via reflection", e);
-            return null;
+            return CompletableFuture.completedFuture(null);
         }
     }
 

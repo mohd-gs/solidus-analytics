@@ -40,8 +40,8 @@ import java.util.List;
  */
 public class SnapshotScheduler {
 
-    /** How often to take hourly snapshots (in server ticks: 36000 = ~30 minutes) */
-    private static final int SNAPSHOT_INTERVAL_TICKS = 36000;
+    /** How often to take hourly snapshots (in server ticks: configurable, default 36000 = ~30 minutes) */
+    private int snapshotIntervalTicks = 36000;
 
     /** The analytics database for storing snapshots */
     private final AnalyticsDatabase analyticsDb;
@@ -83,6 +83,21 @@ public class SnapshotScheduler {
     }
 
     /**
+     * Sets the snapshot interval from configuration.
+     *
+     * <p>Converts minutes to ticks (1 minute = 1200 ticks at 20 TPS).
+     * Values are clamped to a minimum of 1 minute to prevent excessive
+     * snapshot frequency that could impact server performance.</p>
+     *
+     * @param minutes Snapshot interval in minutes (from analytics.properties)
+     */
+    public void setSnapshotIntervalMinutes(int minutes) {
+        minutes = Math.max(1, minutes); // Minimum 1 minute
+        this.snapshotIntervalTicks = minutes * 1200; // 20 ticks/sec × 60 sec/min
+        SolidusAnalyticsMod.LOGGER.info("Snapshot interval set to {} minutes ({} ticks)", minutes, snapshotIntervalTicks);
+    }
+
+    /**
      * Called on every server tick. Checks if it's time for a snapshot.
      * Should be registered with ServerTickEvents.END_SERVER_TICK.
      *
@@ -90,7 +105,7 @@ public class SnapshotScheduler {
      */
     public void onTick(int currentTick) {
         tickCounter++;
-        if (tickCounter >= SNAPSHOT_INTERVAL_TICKS) {
+        if (tickCounter >= snapshotIntervalTicks) {
             tickCounter = 0;
             takeSnapshotAsync("HOURLY");
         }
