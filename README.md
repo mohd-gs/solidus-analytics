@@ -6,7 +6,7 @@
 
 **Understand your server economy in real time — from anywhere.**
 
-[![Solidus Integrated](https://img.shields.io/badge/Solidus-Integrated-8B5CF6?style=flat-square)](https://github.com/mohammad-salah-qasiaa/solidus)
+[![Solidus Integrated](https://img.shields.io/badge/Solidus-Integrated-8B5CF6?style=flat-square)](https://github.com/mohd-gs/solidus-core)
 [![Fabric](https://img.shields.io/badge/Fabric-0.19.2+-db4848?style=flat-square)](https://fabricmc.net)
 [![Minecraft](https://img.shields.io/badge/Minecraft-26.1.x-green?style=flat-square)](https://minecraft.net)
 [![Java](https://img.shields.io/badge/Java-25-orange?style=flat-square)](https://adoptium.net)
@@ -18,7 +18,7 @@
 
 ---
 
-Solidus Analytics is the intelligence layer for [Solidus Core](https://github.com/mohammad-salah-qasiaa/solidus-core) — tracking every transaction, measuring wealth inequality, detecting inflation trends, catching fraud, and putting it all on a live web dashboard you can access from your phone.
+Solidus Analytics is the intelligence layer for [Solidus Core](https://github.com/mohd-gs/solidus-core) — tracking every transaction, measuring wealth inequality, detecting inflation trends, catching fraud, and putting it all on a live web dashboard you can access from your phone.
 
 No VPS required. No open ports needed. Encrypted data pushed to GitHub Pages — decrypted only in your browser. Premium features available with a license key.
 
@@ -36,9 +36,10 @@ No VPS required. No open ports needed. Encrypted data pushed to GitHub Pages —
 
 | Project | Description |
 |---------|-------------|
-| [Solidus Core](https://github.com/mohammad-salah-qasiaa/solidus-core) | Economy engine, server shop, auction house |
+| [Solidus Core](https://github.com/mohd-gs/solidus-core) | Economy engine, server shop, auction house |
 | **Solidus Analytics** | Economy intelligence dashboard, inflation tracking, fraud detection |
-| [Solidus Governance](https://github.com/mohammad-salah-qasiaa/Solidus-Governance) | Economy administration, taxation, audit, recovery |
+| [Solidus Enforcer](https://github.com/mohd-gs/Solidus-Enforcer) | Bounty hunting, license system, alliance rewards, autonomous bounties |
+| [Solidus Governance](https://github.com/mohd-gs/Solidus-Governance) | Economy administration, taxation, audit, recovery |
 
 ---
 
@@ -117,7 +118,7 @@ If your server has an open port, the dashboard runs directly via an embedded Nan
 
 ### Installation
 
-1. Install [Solidus Core](https://github.com/mohammad-salah-qasiaa/solidus-core) on your server
+1. Install [Solidus Core](https://github.com/mohd-gs/solidus-core) on your server
 2. Drop `solidus-analytics.jar` into your `mods/` folder
 3. Start the server — analytics database auto-creates at `config/solidus-analytics/analytics.db`
 
@@ -248,4 +249,4 @@ This software is proprietary and distributed under the Solidus Analytics End-Use
 
 ---
 
-Built by [MOHD_Gs](https://github.com/mohammad-salah-qasiaa)
+Built by [MOHD_Gs](https://github.com/mohd-gs)
