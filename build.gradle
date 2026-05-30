@@ -56,8 +56,8 @@ dependencies {
     // Standard dependencies
     implementation "org.xerial:sqlite-jdbc:3.47.2.0"
 
-    // Include sqlite-jdbc in the final JAR for server-side database access
-    include "org.xerial:sqlite-jdbc:3.47.2.0"
+    // sqlite-jdbc is provided by solidus-core at runtime (included in core JAR)
+    // Keep as implementation-only for compilation; no include to avoid 14MB duplication
 
     // NanoHTTPD — embedded web server for the analytics dashboard
     implementation "org.nanohttpd:nanohttpd:2.3.1"

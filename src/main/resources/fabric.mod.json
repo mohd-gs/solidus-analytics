@@ -1,13 +1,13 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 1,
   "id": "solidus-analytics",
   "version": "${version}",
   "name": "Solidus Analytics",
   "description": "Data analytics engine for Solidus economy — dashboards, inflation tracking, wealth distribution",
   "authors": ["MOHD_Gs"],
   "contact": {
-    "homepage": "https://github.com/mohammad-salah-qasiaa/solidus-analytics",
-    "sources": "https://github.com/mohammad-salah-qasiaa/solidus-analytics"
+    "homepage": "https://github.com/mohd-gs/solidus-analytics",
+    "sources": "https://github.com/mohd-gs/solidus-analytics"
   },
   "license": "SOLIDUS-ANALYTICS-EULA",
   "environment": "server",
