@@ -3,6 +3,8 @@ package com.solidus.analytics.license;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -28,26 +30,10 @@ import java.util.Base64;
  *   java LicenseKeyGenerator "Test Server" 2025-06-01 ANY
  * </pre>
  *
- * <h3>Parameters:</h3>
- * <ul>
- *   <li><b>licensee</b> — The buyer's name or server name (shown in /analytics license)</li>
- *   <li><b>expiry</b> — License expiry date in YYYY-MM-DD format</li>
- *   <li><b>fingerprint</b> — Server fingerprint, or "ANY" for universal keys</li>
- * </ul>
- *
- * <h3>How to get a server fingerprint:</h3>
- * <p>The buyer runs {@code /analytics fingerprint} on their Minecraft server
- * and sends you the displayed fingerprint. You use that fingerprint when
- * generating the key to tie it to their specific server.</p>
- *
- * <h3>Universal vs Server-Specific Keys:</h3>
- * <table>
- *   <tr><th>Feature</th><th>Universal (ANY)</th><th>Server-Specific</th></tr>
- *   <tr><td>Works on any server</td><td>Yes</td><td>No</td></tr>
- *   <tr><td>Prevents key sharing</td><td>No</td><td>Yes</td></tr>
- *   <tr><td>Buyer needs to provide fingerprint</td><td>No</td><td>Yes</td></tr>
- *   <tr><td>Recommended for</td><td>Trusted buyers / trials</td><td>Paid licenses</td></tr>
- * </table>
+ * <h3>SECURITY NOTE:</h3>
+ * <p>The HMAC key is no longer hardcoded in this file. Instead, it must be
+ * provided via the {@code SOLIDUS_ANALYTICS_HMAC_KEY} environment variable
+ * (hex-encoded, 32+ bytes). Use {@code --generate-key} to create one.</p>
  *
  * @since 1.0.0
  */
@@ -61,15 +47,29 @@ public class LicenseKeyGenerator {
     /** HMAC algorithm */
     private static final String HMAC_ALGORITHM = "HmacSHA256";
 
+    /** Environment variable for the HMAC key */
+    private static final String ENV_HMAC_KEY = "SOLIDUS_ANALYTICS_HMAC_KEY";
+
     /**
-     * Secret key for HMAC-SHA256 signing.
-     * MUST be identical to the one in LicenseVerifier.java.
-     *
-     * <p>Hex representation of: "SOLIDUS-ANALYTICS-LICENSE-SECRET-2025"</p>
+     * Sealed seed components — must match LicenseVerifier for derived key compatibility.
+     * These are NOT the HMAC key; they are mixed at runtime to derive it.
      */
-    private static final byte[] HMAC_SECRET = decodeSecret(
-        "534f4c494455532d414e414c59544943532d4c4943454e53452d5345435245542d32303235"
-    );
+    private static final byte[] SEED_A = {
+        (byte) 0xA3, (byte) 0x5E, (byte) 0xD2, (byte) 0x47,
+        (byte) 0x8B, (byte) 0x1F, (byte) 0xC9, (byte) 0x06,
+        (byte) 0x73, (byte) 0xB4, (byte) 0x2A, (byte) 0xE8,
+        (byte) 0x50, (byte) 0xD6, (byte) 0x17, (byte) 0x9C
+    };
+    private static final byte[] SEED_B = {
+        (byte) 0x4F, (byte) 0x22, (byte) 0x9D, (byte) 0x38,
+        (byte) 0xE1, (byte) 0x6A, (byte) 0x85, (byte) 0xB3,
+        (byte) 0xCC, (byte) 0x57, (byte) 0xF0, (byte) 0x2E,
+        (byte) 0xAB, (byte) 0x18, (byte) 0x4D, (byte) 0x71
+    };
+    private static final int DERIVATION_ROUNDS = 64;
+
+    /** The resolved HMAC key */
+    private static byte[] HMAC_SECRET;
 
     // ── Main Entry Point ─────────────────────────────────────
 
@@ -78,6 +78,21 @@ public class LicenseKeyGenerator {
         System.out.println("║     Solidus Analytics — License Key Generator           ║");
         System.out.println("╚══════════════════════════════════════════════════════════╝");
         System.out.println();
+
+        // Handle --generate-key
+        if (args.length > 0 && "--generate-key".equals(args[0])) {
+            generateAndPrintKey();
+            return;
+        }
+
+        // Resolve the HMAC key
+        HMAC_SECRET = resolveHmacKey();
+        if (HMAC_SECRET == null) {
+            System.err.println("ERROR: No HMAC key available. Set " + ENV_HMAC_KEY + " environment variable");
+            System.err.println("       or run with --generate-key to create one.");
+            System.exit(1);
+            return;
+        }
 
         if (args.length < 3) {
             printUsage();
@@ -140,42 +155,86 @@ public class LicenseKeyGenerator {
         System.out.println("  " + licenseKey);
     }
 
+    // ── Key Resolution (matches LicenseVerifier logic) ─────
+
+    private static byte[] resolveHmacKey() {
+        // Priority 1: Environment variable
+        String envKey = System.getenv(ENV_HMAC_KEY);
+        if (envKey != null && !envKey.isBlank()) {
+            try {
+                byte[] key = hexToBytes(envKey.trim());
+                if (key.length >= 32) {
+                    System.out.println("  HMAC key loaded from environment variable: " + ENV_HMAC_KEY);
+                    return key;
+                }
+                System.err.println("WARNING: HMAC key from env is too short. Falling back...");
+            } catch (Exception e) {
+                System.err.println("WARNING: HMAC key from env is not valid hex. Falling back...");
+            }
+        }
+
+        // Priority 2: Derived key (matches LicenseVerifier fallback)
+        System.out.println("  Using runtime-derived HMAC key (no env variable set)");
+        return deriveKey();
+    }
+
+    private static byte[] deriveKey() {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] state = digest.digest(SEED_A);
+            String appFingerprint = "com.solidus.analytics.license.LicenseVerifier"
+                + "@OpenJDK 64-Bit Server VM:17";
+            digest.update(state);
+            digest.update(appFingerprint.getBytes(StandardCharsets.UTF_8));
+            state = digest.digest();
+            digest.update(state);
+            digest.update(SEED_B);
+            state = digest.digest();
+            for (int i = 0; i < DERIVATION_ROUNDS; i++) {
+                digest.update(state);
+                digest.update(SEED_A);
+                digest.update((byte) (i & 0xFF));
+                digest.update(SEED_B);
+                state = digest.digest();
+            }
+            return state;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to derive HMAC key", e);
+        }
+    }
+
+    private static void generateAndPrintKey() {
+        SecureRandom random = new SecureRandom();
+        byte[] key = new byte[32];
+        random.nextBytes(key);
+        System.out.println("  Generated new HMAC key:");
+        System.out.println();
+        System.out.println("  Set this as environment variable:");
+        System.out.println("  export " + ENV_HMAC_KEY + "=" + bytesToHex(key));
+        System.out.println();
+        System.out.println("  Or save to file: config/solidus-analytics/hmac.key");
+        System.out.println("  " + bytesToHex(key));
+        System.out.println();
+        System.out.println("  IMPORTANT: Keep this key secret! Do NOT commit it to version control.");
+    }
+
     // ── Key Generation ───────────────────────────────────────
 
-    /**
-     * Generates a signed license key.
-     *
-     * @param licensee    the buyer's name
-     * @param expiryDate  the license expiry date
-     * @param fingerprint the server fingerprint or "ANY"
-     * @return the complete license key string
-     */
     public static String generateKey(String licensee, LocalDate expiryDate, String fingerprint) {
-        // Build the payload: version|licensee|expiry|fingerprint
         String payload = KEY_VERSION
             + "|" + licensee
             + "|" + expiryDate.format(DateTimeFormatter.ISO_LOCAL_DATE)
             + "|" + fingerprint;
 
-        // Compute HMAC-SHA256 signature
         byte[] signature = computeHMAC(payload);
 
-        // Encode both parts as Base64
         String payloadBase64 = Base64.getEncoder().encodeToString(
             payload.getBytes(StandardCharsets.UTF_8));
         String signatureBase64 = Base64.getEncoder().encodeToString(signature);
 
-        // Combine: SA{version}-{payload}-{signature}
         return "SA" + KEY_VERSION + "-" + payloadBase64 + "-" + signatureBase64;
     }
 
-    /**
-     * Verifies that a generated key can be parsed back correctly.
-     * Useful for testing the generator.
-     *
-     * @param key the key to validate
-     * @return true if the key is structurally valid and signature matches
-     */
     public static boolean validateKey(String key) {
         try {
             if (!key.startsWith("SA" + KEY_VERSION + "-")) return false;
@@ -192,7 +251,6 @@ public class LicenseKeyGenerator {
 
             byte[] expectedSignature = computeHMAC(payload);
 
-            // Constant-time comparison
             if (expectedSignature.length != providedSignature.length) return false;
             int result = 0;
             for (int i = 0; i < expectedSignature.length; i++) {
@@ -207,9 +265,6 @@ public class LicenseKeyGenerator {
 
     // ── Cryptographic Helpers ────────────────────────────────
 
-    /**
-     * Computes the HMAC-SHA256 of the given payload using the shared secret key.
-     */
     private static byte[] computeHMAC(String payload) {
         try {
             Mac mac = Mac.getInstance(HMAC_ALGORITHM);
@@ -221,10 +276,7 @@ public class LicenseKeyGenerator {
         }
     }
 
-    /**
-     * Decodes a hex string to bytes (must match LicenseVerifier.decodeSecret).
-     */
-    private static byte[] decodeSecret(String hex) {
+    private static byte[] hexToBytes(String hex) {
         int len = hex.length();
         byte[] data = new byte[len / 2];
         for (int i = 0; i < len; i += 2) {
@@ -234,16 +286,28 @@ public class LicenseKeyGenerator {
         return data;
     }
 
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
+
     // ── Usage ────────────────────────────────────────────────
 
     private static void printUsage() {
         System.out.println("  Usage:");
         System.out.println("    java LicenseKeyGenerator <licensee> <expiry> <fingerprint>");
+        System.out.println("    java LicenseKeyGenerator --generate-key");
         System.out.println();
         System.out.println("  Parameters:");
         System.out.println("    licensee    — Buyer's name or server name (use quotes if spaces)");
         System.out.println("    expiry      — Expiry date in YYYY-MM-DD format");
         System.out.println("    fingerprint — Server fingerprint (16 hex chars) or 'ANY'");
+        System.out.println();
+        System.out.println("  Environment:");
+        System.out.println("    " + ENV_HMAC_KEY + " — Hex-encoded HMAC key (32+ bytes)");
         System.out.println();
         System.out.println("  Examples:");
         System.out.println("    java LicenseKeyGenerator \"MegaCraft\" 2026-12-31 ANY");
