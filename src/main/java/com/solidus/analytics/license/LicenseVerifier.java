@@ -28,7 +28,8 @@ import java.util.Base64;
  * Instead, it is loaded using the following priority chain:</p>
  * <ol>
  *   <li><b>Environment variable</b> {@code SOLIDUS_ANALYTICS_HMAC_KEY} — hex-encoded 32+ byte key</li>
- *   <li><b>External file</b> {@code config/solidus-analytics/hmac.key} — hex-encoded key file</li>
+ *   <li><b>External file</b> {@code config/solidus-analytics/hmac.key} — hex-encoded key file
+ *       (auto-generated on first run if missing)</li>
  *   <li><b>Derived key</b> — computed at runtime from a sealed seed + application fingerprint,
  *       making static analysis insufficient to extract the key</li>
  * </ol>
@@ -49,6 +50,7 @@ import java.util.Base64;
  *   <li>License keys are never logged or exposed in chat</li>
  *   <li>Expiry date prevents permanent use of time-limited licenses</li>
  *   <li>The HMAC key is never stored as a plain literal in source code</li>
+ *   <li>hmac.key is auto-generated on first run for persistent, unique keys</li>
  * </ul>
  *
  * @since 1.0.0
@@ -79,18 +81,27 @@ public final class LicenseVerifier {
      * the actual HMAC key.</p>
      */
     private static final byte[] SEED_A = {
-        (byte) 0xA3, (byte) 0x5E, (byte) 0xD2, (byte) 0x47,
-        (byte) 0x8B, (byte) 0x1F, (byte) 0xC9, (byte) 0x06,
-        (byte) 0x73, (byte) 0xB4, (byte) 0x2A, (byte) 0xE8,
-        (byte) 0x50, (byte) 0xD6, (byte) 0x17, (byte) 0x9C
+        (byte) 0x1F, (byte) 0x8B, (byte) 0x4C, (byte) 0xE2,
+        (byte) 0xA7, (byte) 0x39, (byte) 0xD5, (byte) 0x6E,
+        (byte) 0x0B, (byte) 0xF4, (byte) 0x83, (byte) 0x1A,
+        (byte) 0x5D, (byte) 0xC7, (byte) 0x2E, (byte) 0x90
     };
     private static final byte[] SEED_B = {
-        (byte) 0x4F, (byte) 0x22, (byte) 0x9D, (byte) 0x38,
-        (byte) 0xE1, (byte) 0x6A, (byte) 0x85, (byte) 0xB3,
-        (byte) 0xCC, (byte) 0x57, (byte) 0xF0, (byte) 0x2E,
-        (byte) 0xAB, (byte) 0x18, (byte) 0x4D, (byte) 0x71
+        (byte) 0xD3, (byte) 0x61, (byte) 0x7F, (byte) 0x0A,
+        (byte) 0x95, (byte) 0x2B, (byte) 0x48, (byte) 0xEC,
+        (byte) 0x76, (byte) 0x13, (byte) 0xBF, (byte) 0x54,
+        (byte) 0x8A, (byte) 0x3D, (byte) 0xE9, (byte) 0x27
     };
     private static final int DERIVATION_ROUNDS = 64;
+
+    /**
+     * Canonical application fingerprint used for key derivation.
+     * This is a fixed string that does NOT depend on the runtime JVM version,
+     * ensuring that derived keys are consistent across all JVM versions and
+     * match between LicenseKeyGenerator and LicenseVerifier.
+     */
+    private static final String CANONICAL_APP_FINGERPRINT =
+        "com.solidus.analytics.license.LicenseVerifier@Solidus-Analytics/1";
 
     // ── Resolved Key ──────────────────────────────────────────
 
@@ -136,8 +147,8 @@ public final class LicenseVerifier {
     /**
      * Resolves the HMAC key using the priority chain:
      * 1. Environment variable SOLIDUS_ANALYTICS_HMAC_KEY (hex-encoded)
-     * 2. External file hmac.key in config directory (hex-encoded)
-     * 3. Derived key from sealed seeds + runtime fingerprint
+     * 2. External file hmac.key in config directory (hex-encoded, auto-generated if missing)
+     * 3. Derived key from sealed seeds + canonical fingerprint
      *
      * @param configDir The config directory to search for hmac.key
      * @return The resolved HMAC key bytes
@@ -158,20 +169,38 @@ public final class LicenseVerifier {
             }
         }
 
-        // Priority 2: External file
+        // Priority 2: External file (auto-generated on first run if missing)
         if (configDir != null) {
             Path keyFile = configDir.resolve(HMAC_KEY_FILE);
             if (Files.exists(keyFile)) {
                 try {
                     String fileKey = Files.readString(keyFile).trim();
-                    byte[] key = hexToBytes(fileKey);
-                    if (key.length >= 32) {
-                        SolidusAnalyticsMod.LOGGER.info("HMAC key loaded from file: {}", keyFile);
-                        return key;
+                    // Skip comment lines
+                    String[] lines = fileKey.split("\\n");
+                    String hexKey = null;
+                    for (String line : lines) {
+                        line = line.trim();
+                        if (!line.isEmpty() && !line.startsWith("#")) {
+                            hexKey = line;
+                            break;
+                        }
                     }
-                    SolidusAnalyticsMod.LOGGER.warn("HMAC key file exists but key is too short (need 32+ bytes). Falling back...");
+                    if (hexKey != null) {
+                        byte[] key = hexToBytes(hexKey);
+                        if (key.length >= 32) {
+                            SolidusAnalyticsMod.LOGGER.info("HMAC key loaded from file: {}", keyFile);
+                            return key;
+                        }
+                        SolidusAnalyticsMod.LOGGER.warn("HMAC key file exists but key is too short (need 32+ bytes). Falling back...");
+                    }
                 } catch (Exception e) {
                     SolidusAnalyticsMod.LOGGER.warn("Failed to read HMAC key file. Falling back...");
+                }
+            } else {
+                // Auto-generate hmac.key on first run if file doesn't exist
+                byte[] generated = autoGenerateHmacKey(configDir, keyFile);
+                if (generated != null) {
+                    return generated;
                 }
             }
         }
@@ -183,14 +212,41 @@ public final class LicenseVerifier {
     }
 
     /**
+     * Auto-generates a random HMAC key and writes it to the hmac.key file
+     * so that subsequent runs use a persistent, unique key rather than
+     * the derived fallback.
+     *
+     * @param configDir The config directory (parent)
+     * @param keyFile   The full path to hmac.key
+     * @return the generated key bytes, or null if generation failed
+     */
+    private byte[] autoGenerateHmacKey(Path configDir, Path keyFile) {
+        try {
+            Files.createDirectories(configDir);
+            SecureRandom random = new SecureRandom();
+            byte[] key = new byte[32];
+            random.nextBytes(key);
+            String hexKey = bytesToHex(key);
+            Files.writeString(keyFile,
+                "# Auto-generated Solidus Analytics HMAC key — DO NOT COMMIT\n" + hexKey + "\n");
+            SolidusAnalyticsMod.LOGGER.info("Auto-generated new HMAC key file: {}", keyFile);
+            SolidusAnalyticsMod.LOGGER.info("For license key generation, copy this key to your generator env or file.");
+            return key;
+        } catch (Exception e) {
+            SolidusAnalyticsMod.LOGGER.warn("Could not auto-generate hmac.key file. Falling back to derived key.", e);
+            return null;
+        }
+    }
+
+    /**
      * Derives the HMAC key at runtime by mixing sealed seed components
-     * with a runtime application fingerprint through multiple SHA-256 rounds.
+     * with a canonical application fingerprint through multiple SHA-256 rounds.
      *
      * <p>This approach ensures:</p>
      * <ul>
      *   <li>The key is never stored as a literal in source code</li>
      *   <li>Static analysis of the seed bytes alone is insufficient</li>
-     *   <li>The derivation depends on the application's runtime identity</li>
+     *   <li>The derivation is JVM-version-independent (uses a canonical fingerprint)</li>
      * </ul>
      *
      * @return A 32-byte derived HMAC key
@@ -202,12 +258,9 @@ public final class LicenseVerifier {
             // Mix seed A
             byte[] state = digest.digest(SEED_A);
 
-            // Mix application fingerprint (class identity — varies by runtime)
-            String appFingerprint = LicenseVerifier.class.getName()
-                + "@" + System.getProperty("java.vm.name", "unknown")
-                + ":" + System.getProperty("java.vm.version", "0");
+            // Mix canonical application fingerprint (JVM-version-independent)
             digest.update(state);
-            digest.update(appFingerprint.getBytes(StandardCharsets.UTF_8));
+            digest.update(CANONICAL_APP_FINGERPRINT.getBytes(StandardCharsets.UTF_8));
             state = digest.digest();
 
             // Mix seed B
