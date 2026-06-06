@@ -116,11 +116,13 @@ public class AnalyticsWebServer extends NanoHTTPD {
 
         // Authenticate all requests (except static resources from same origin)
         if (!isAuthenticated(session)) {
-            return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/html",
+            Response unauthorized = newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/html",
                 "<html><body><h1>401 Unauthorized</h1>"
                 + "<p>Valid credentials required. "
                 + "Set up a password with /analytics dashboard setup &lt;password&gt;</p>"
                 + "</body></html>");
+            unauthorized.addHeader("WWW-Authenticate", "Basic realm=\"Solidus Analytics\"");
+            return unauthorized;
         }
 
         // Add CORS headers for authenticated requests

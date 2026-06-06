@@ -242,26 +242,30 @@ public class DiscordWebhookNotifier {
                 }
 
                 HttpURLConnection conn = (HttpURLConnection) URI.create(webhookUrl).toURL().openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json");
-                conn.setRequestProperty("User-Agent", "SolidusAnalytics/1.0");
-                conn.setConnectTimeout(10_000);
-                conn.setReadTimeout(10_000);
-                conn.setDoOutput(true);
+                try {
+                    conn.setRequestMethod("POST");
+                    conn.setRequestProperty("Content-Type", "application/json");
+                    conn.setRequestProperty("User-Agent", "SolidusAnalytics/1.0");
+                    conn.setConnectTimeout(10_000);
+                    conn.setReadTimeout(10_000);
+                    conn.setDoOutput(true);
 
-                try (OutputStream os = conn.getOutputStream()) {
-                    os.write(jsonPayload.getBytes(StandardCharsets.UTF_8));
-                }
+                    try (OutputStream os = conn.getOutputStream()) {
+                        os.write(jsonPayload.getBytes(StandardCharsets.UTF_8));
+                    }
 
-                int responseCode = conn.getResponseCode();
-                lastWebhookSent = System.currentTimeMillis();
+                    int responseCode = conn.getResponseCode();
+                    lastWebhookSent = System.currentTimeMillis();
 
-                if (responseCode == 204 || responseCode == 200) {
-                    SolidusAnalyticsMod.LOGGER.debug("Discord webhook sent successfully.");
-                } else if (responseCode == 429) {
-                    SolidusAnalyticsMod.LOGGER.warn("Discord webhook rate limited. Backing off.");
-                } else {
-                    SolidusAnalyticsMod.LOGGER.warn("Discord webhook returned status: {}", responseCode);
+                    if (responseCode == 204 || responseCode == 200) {
+                        SolidusAnalyticsMod.LOGGER.debug("Discord webhook sent successfully.");
+                    } else if (responseCode == 429) {
+                        SolidusAnalyticsMod.LOGGER.warn("Discord webhook rate limited. Backing off.");
+                    } else {
+                        SolidusAnalyticsMod.LOGGER.warn("Discord webhook returned status: {}", responseCode);
+                    }
+                } finally {
+                    conn.disconnect();
                 }
 
             } catch (InterruptedException e) {
@@ -277,10 +281,9 @@ public class DiscordWebhookNotifier {
      */
     private String buildEmbed(String title, String description, String footer, String color) {
         // Escape special characters in JSON strings
-        String escapedTitle = title.replace("\\", "\\\\").replace("\"", "\\\"");
-        String escapedDesc = description.replace("\\", "\\\\").replace("\"", "\\\"")
-            .replace("\n", "\\n");
-        String escapedFooter = footer.replace("\\", "\\\\").replace("\"", "\\\"");
+        String escapedTitle = escapeJson(title);
+        String escapedDesc = escapeJson(description);
+        String escapedFooter = escapeJson(footer);
 
         return String.format("""
             {
@@ -296,6 +299,34 @@ public class DiscordWebhookNotifier {
             }""",
             escapedTitle, escapedDesc, color, escapedFooter,
             Instant.now().toString());
+    }
+
+    /**
+     * Escapes a string for safe inclusion in a JSON value.
+     *
+     * <p>Handles: backslash, double quote, newline, carriage return,
+     * tab, and all other control characters (U+0000 – U+001F).</p>
+     */
+    private String escapeJson(String value) {
+        StringBuilder sb = new StringBuilder(value.length());
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            switch (c) {
+                case '\\' -> sb.append("\\\\");
+                case '"'  -> sb.append("\\\"");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                default -> {
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+                }
+            }
+        }
+        return sb.toString();
     }
 
     // ── Accessors ───────────────────────────────────────────

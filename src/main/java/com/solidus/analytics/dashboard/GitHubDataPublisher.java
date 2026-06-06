@@ -346,7 +346,9 @@ public class GitHubDataPublisher {
 
             if (inputStream == null) return "";
 
-            return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+            try (inputStream) {
+                return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+            }
         } catch (IOException e) {
             return "";
         }

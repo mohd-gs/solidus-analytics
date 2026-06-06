@@ -36,7 +36,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public final class SolidusIntegration {
 
-    private static SolidusIntegration instance;
+    private static volatile SolidusIntegration instance;
 
     private final Object apiInstance;
     private final Class<?> apiClass;

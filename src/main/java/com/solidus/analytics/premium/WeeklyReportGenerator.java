@@ -48,9 +48,9 @@ public class WeeklyReportGenerator {
     /** Track the last week number we generated a report for — persisted in DB for restart resilience */
     private volatile int lastReportWeek = -1;
 
-    public WeeklyReportGenerator(AnalyticsEngine engine, Path configDir) {
+    public WeeklyReportGenerator(AnalyticsEngine engine, AnalyticsDatabase database, Path configDir) {
         this.engine = engine;
-        this.database = engine.getDatabase();
+        this.database = database;
         this.reportsDir = configDir.resolve("reports");
 
         // Load last report week from DB to prevent duplicate reports after restart

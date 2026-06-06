@@ -133,16 +133,17 @@ public class AnalyticsEngine {
         inflationCalculator = new InflationCalculator(database, economyDbPath, auctionsDbPath);
 
         // ── Step 8: Initialize weekly report generator (works for all users) ──
-        weeklyReportGenerator = new WeeklyReportGenerator(this, configDirPath);
+        weeklyReportGenerator = new WeeklyReportGenerator(this, database, configDirPath);
 
         // ── Step 9: Initialize premium features ──
         initializePremium(configDirPath);
 
         // ── Step 10: Initialize dashboard manager ──
+        initialized = true;
+
         dashboardManager = new DashboardManager(this, configDirPath);
         dashboardManager.initialize();
 
-        initialized = true;
         SolidusAnalyticsMod.LOGGER.info("Solidus Analytics Engine initialized successfully.");
         SolidusAnalyticsMod.LOGGER.info("API Integration: {} | Mode: {}",
             apiIntegrationAvailable ? "ACTIVE" : "UNAVAILABLE",
