@@ -3,151 +3,422 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Solidus Analytics Dashboard</title>
+    <title>Solidus Analytics</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 </head>
 <body>
-    <!-- Password Modal (shown if data is encrypted) -->
-    <div id="password-modal" class="modal" style="display:none;">
-        <div class="modal-content">
-            <h2>Dashboard Login</h2>
-            <p>Enter the dashboard password to decrypt the data.</p>
+
+    <!-- ═══ Password Modal ═══ -->
+    <div id="password-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-card">
+            <div class="modal-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+            </div>
+            <h2>Dashboard Access</h2>
+            <p>Enter the dashboard password to decrypt analytics data.</p>
             <input type="password" id="password-input" placeholder="Password" autocomplete="off">
-            <button id="password-submit" onclick="decryptWithPassword()">Unlock</button>
-            <p id="password-error" class="error" style="display:none;">Incorrect password. Try again.</p>
+            <button id="password-submit" onclick="decryptWithPassword()">Unlock Dashboard</button>
+            <p id="password-error" class="error-msg" style="display:none;">Incorrect password. Please try again.</p>
         </div>
     </div>
 
-    <!-- Main Dashboard -->
+    <!-- ═══ Main Dashboard ═══ -->
     <div id="dashboard" class="dashboard" style="display:none;">
-        <!-- Header -->
-        <header class="header">
-            <div class="header-left">
-                <h1>Solidus <span>Analytics</span></h1>
-                <span id="server-name" class="server-name"></span>
-            </div>
-            <div class="header-right">
-                <span id="last-update" class="last-update">Loading...</span>
-                <span id="connection-status" class="status-dot disconnected"></span>
-            </div>
-        </header>
 
-        <!-- Health Score Card -->
-        <section id="health-section" class="card health-card">
-            <h2>Economy Health Score</h2>
-            <div class="health-display">
-                <div class="health-score">
-                    <span id="health-value" class="score-value">--</span>
-                    <span id="health-grade" class="score-grade">--</span>
+        <!-- ── Top Navigation Bar ── -->
+        <nav class="topbar">
+            <div class="topbar-left">
+                <div class="logo">
+                    <svg class="logo-icon" width="32" height="32" viewBox="0 0 32 32" fill="none">
+                        <rect x="2" y="2" width="28" height="28" rx="6" fill="#1E3D2F"/>
+                        <path d="M16 6L26 12V20L16 26L6 20V12L16 6Z" fill="#00D86C" opacity="0.9"/>
+                        <path d="M16 10L22 13.5V18.5L16 22L10 18.5V13.5L16 10Z" fill="#0A0A0A"/>
+                    </svg>
+                    <span class="logo-text">Solidus <span class="accent">Analytics</span></span>
                 </div>
-                <div class="health-summary">
-                    <p id="health-summary-text">Loading...</p>
-                </div>
-            </div>
-            <div class="health-factors">
-                <div class="factor">
-                    <span class="factor-label">Gini Inequality</span>
-                    <div class="factor-bar"><div id="factor-gini" class="factor-fill" style="width:0%"></div></div>
-                    <span id="factor-gini-val" class="factor-value">--</span>
-                </div>
-                <div class="factor">
-                    <span class="factor-label">Inflation Rate</span>
-                    <div class="factor-bar"><div id="factor-inflation" class="factor-fill" style="width:0%"></div></div>
-                    <span id="factor-inflation-val" class="factor-value">--</span>
-                </div>
-                <div class="factor">
-                    <span class="factor-label">Money Growth</span>
-                    <div class="factor-bar"><div id="factor-growth" class="factor-fill" style="width:0%"></div></div>
-                    <span id="factor-growth-val" class="factor-value">--</span>
-                </div>
-                <div class="factor">
-                    <span class="factor-label">Activity</span>
-                    <div class="factor-bar"><div id="factor-activity" class="factor-fill" style="width:0%"></div></div>
-                    <span id="factor-activity-val" class="factor-value">--</span>
-                </div>
-                <div class="factor">
-                    <span class="factor-label">Liquidity</span>
-                    <div class="factor-bar"><div id="factor-liquidity" class="factor-fill" style="width:0%"></div></div>
-                    <span id="factor-liquidity-val" class="factor-value">--</span>
+                <div class="nav-links">
+                    <a href="#" class="nav-link active" onclick="switchTab('dashboard'); return false;">Dashboard</a>
+                    <a href="#" class="nav-link" onclick="switchTab('economy'); return false;">Economy</a>
+                    <a href="#" class="nav-link" onclick="switchTab('security'); return false;">Security</a>
                 </div>
             </div>
-        </section>
+            <div class="topbar-right">
+                <div class="topbar-server">
+                    <span id="server-name" class="server-label">Server</span>
+                    <span class="server-divider">|</span>
+                    <span id="connection-status" class="status-indicator">
+                        <span class="status-dot disconnected"></span>
+                        <span class="status-text">Offline</span>
+                    </span>
+                </div>
+                <button class="topbar-btn" onclick="refreshData()" title="Refresh Data">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                    </svg>
+                </button>
+            </div>
+        </nav>
 
-        <!-- Live Metrics Row -->
-        <section class="metrics-row">
-            <div class="metric-card">
-                <span class="metric-value" id="metric-volume">--</span>
-                <span class="metric-label">Daily Volume</span>
-            </div>
-            <div class="metric-card">
-                <span class="metric-value" id="metric-transactions">--</span>
-                <span class="metric-label">Transactions</span>
-            </div>
-            <div class="metric-card">
-                <span class="metric-value" id="metric-players">--</span>
-                <span class="metric-label">Active Players</span>
-            </div>
-            <div class="metric-card">
-                <span class="metric-value" id="metric-inflation">--</span>
-                <span class="metric-label">Inflation (24h)</span>
-            </div>
-        </section>
+        <!-- ── Main Content Area ── -->
+        <main class="main-content">
 
-        <!-- Charts Row -->
-        <section class="charts-row">
-            <div class="card chart-card">
-                <h3>Daily Transaction Volume</h3>
-                <canvas id="volume-chart"></canvas>
-            </div>
-            <div class="card chart-card">
-                <h3>Inflation Trend</h3>
-                <canvas id="inflation-chart"></canvas>
-            </div>
-        </section>
-
-        <!-- Snapshot & Inflation Row -->
-        <section class="charts-row">
-            <div class="card chart-card">
-                <h3>Wealth Distribution</h3>
-                <canvas id="wealth-chart"></canvas>
-            </div>
-            <div class="card chart-card">
-                <h3>Money:Goods Ratio</h3>
-                <canvas id="ratio-chart"></canvas>
-            </div>
-        </section>
-
-        <!-- Fraud Alerts & Top Items -->
-        <section class="bottom-row">
-            <div class="card" id="fraud-section">
-                <h3>Fraud Alerts</h3>
-                <div id="fraud-list" class="alert-list">
-                    <p class="no-data">Loading...</p>
+            <!-- Welcome Header -->
+            <div class="welcome-header">
+                <div>
+                    <span class="section-tag">DASHBOARD</span>
+                    <h1 class="welcome-title">Economy Overview</h1>
                 </div>
+                <span id="last-update" class="last-update">Loading data...</span>
             </div>
-            <div class="card">
-                <h3>Top Traded Items</h3>
-                <div class="items-grid">
-                    <div class="items-column">
-                        <h4>Most Bought</h4>
-                        <ul id="top-bought" class="item-list"></ul>
+
+            <!-- ═══ Top Row: 3 Summary Cards ═══ -->
+            <section class="top-cards">
+
+                <!-- Economy Wallet Card -->
+                <div class="card summary-card">
+                    <div class="card-header">
+                        <div class="card-icon green-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/>
+                                <path d="M4 6v12c0 1.1.9 2 2 2h14v-4"/>
+                                <circle cx="18" cy="12" r="2"/>
+                            </svg>
+                        </div>
+                        <div class="card-title-group">
+                            <h3 class="card-title">Money Supply</h3>
+                        </div>
                     </div>
-                    <div class="items-column">
-                        <h4>Most Sold</h4>
-                        <ul id="top-sold" class="item-list"></ul>
+                    <div class="card-body">
+                        <div class="big-number" id="metric-money-supply">--</div>
+                        <span class="big-label">TOTAL CIRCULATING</span>
+                    </div>
+                    <div class="card-footer-row">
+                        <div class="stat-item">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#448AFF" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                            <span class="stat-label">Daily Vol</span>
+                            <span class="stat-value" id="metric-volume">--</span>
+                        </div>
+                        <div class="stat-item">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00D86C" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                            <span class="stat-label">Players</span>
+                            <span class="stat-value" id="metric-players">--</span>
+                        </div>
                     </div>
                 </div>
-            </div>
-        </section>
 
-        <!-- Footer -->
-        <footer class="footer">
-            <p>Solidus Analytics Dashboard &mdash; Data updates every 60 seconds</p>
-        </footer>
+                <!-- Inflation Card -->
+                <div class="card summary-card">
+                    <div class="card-header">
+                        <div class="card-icon green-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                            </svg>
+                        </div>
+                        <div class="card-title-group">
+                            <h3 class="card-title">Inflation Monitor</h3>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="big-number" id="metric-inflation">--</div>
+                        <span class="big-label">24H RATE</span>
+                    </div>
+                    <div class="card-footer-row three-col">
+                        <div class="stat-item">
+                            <span class="stat-label">7D</span>
+                            <span class="stat-value" id="metric-inflation-7d">--</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">30D</span>
+                            <span class="stat-value" id="metric-inflation-30d">--</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">M:G Ratio</span>
+                            <span class="stat-value" id="metric-ratio">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Health Score Card -->
+                <div class="card summary-card health-highlight">
+                    <div class="card-header">
+                        <div class="card-icon green-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                            </svg>
+                        </div>
+                        <div class="card-title-group">
+                            <h3 class="card-title">Health Score</h3>
+                            <span class="card-badge" id="health-grade-badge">--</span>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="big-number" id="health-value">--</div>
+                        <span class="big-label">OVERALL RATING</span>
+                    </div>
+                    <div class="card-footer-row">
+                        <div class="stat-item">
+                            <span class="stat-label">Gini</span>
+                            <span class="stat-value" id="factor-gini-val">--</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Activity</span>
+                            <span class="stat-value" id="factor-activity-val">--</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Liquidity</span>
+                            <span class="stat-value" id="factor-liquidity-val">--</span>
+                        </div>
+                    </div>
+                </div>
+
+            </section>
+
+            <!-- ═══ Tab Content: Dashboard ═══ -->
+            <div id="tab-dashboard" class="tab-content active">
+
+                <!-- Charts Row 1 -->
+                <section class="charts-row">
+                    <div class="card chart-card">
+                        <div class="card-header">
+                            <h3 class="card-title">Daily Transaction Volume</h3>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="volume-chart"></canvas>
+                        </div>
+                    </div>
+                    <div class="card chart-card">
+                        <div class="card-header">
+                            <h3 class="card-title">Inflation Trend</h3>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="inflation-chart"></canvas>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Charts Row 2 -->
+                <section class="charts-row">
+                    <div class="card chart-card">
+                        <div class="card-header">
+                            <h3 class="card-title">Wealth Distribution</h3>
+                        </div>
+                        <div class="chart-wrapper chart-sm">
+                            <canvas id="wealth-chart"></canvas>
+                        </div>
+                    </div>
+                    <div class="card chart-card">
+                        <div class="card-header">
+                            <h3 class="card-title">Money:Goods Ratio</h3>
+                        </div>
+                        <div class="chart-wrapper chart-sm">
+                            <canvas id="ratio-chart"></canvas>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Bottom Row: Fraud + Top Items -->
+                <section class="bottom-row">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-icon" style="background: rgba(255,82,82,0.1);">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF5252" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                                </svg>
+                            </div>
+                            <h3 class="card-title">Fraud Alerts</h3>
+                        </div>
+                        <div id="fraud-list" class="alert-list">
+                            <div class="empty-state">
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                <span class="empty-title">No Alerts</span>
+                                <span class="empty-desc">Fraud detection is monitoring transactions.</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-icon green-icon-sm">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00D86C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                                </svg>
+                            </div>
+                            <h3 class="card-title">Top Traded Items</h3>
+                        </div>
+                        <div class="items-grid">
+                            <div class="items-column">
+                                <h4>Most Bought</h4>
+                                <ul id="top-bought" class="item-list">
+                                    <li class="item-empty">No data yet</li>
+                                </ul>
+                            </div>
+                            <div class="items-column">
+                                <h4>Most Sold</h4>
+                                <ul id="top-sold" class="item-list">
+                                    <li class="item-empty">No data yet</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+
+            <!-- ═══ Tab Content: Economy ═══ -->
+            <div id="tab-economy" class="tab-content">
+
+                <!-- Health Factor Breakdown -->
+                <section class="card health-detail-card">
+                    <div class="card-header">
+                        <div class="card-icon green-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                        </div>
+                        <h3 class="card-title">Economy Health Breakdown</h3>
+                    </div>
+                    <p class="card-subtitle" id="health-summary-text">Loading health assessment...</p>
+                    <div class="health-factors-grid">
+                        <div class="factor-card">
+                            <div class="factor-header">
+                                <span class="factor-name">Gini Inequality</span>
+                                <span class="factor-score" id="factor-gini-val2">--</span>
+                            </div>
+                            <div class="factor-bar-track"><div id="factor-gini" class="factor-bar-fill" style="width:0%"></div></div>
+                            <span class="factor-weight">Weight: 25%</span>
+                        </div>
+                        <div class="factor-card">
+                            <div class="factor-header">
+                                <span class="factor-name">Inflation Rate</span>
+                                <span class="factor-score" id="factor-inflation-val2">--</span>
+                            </div>
+                            <div class="factor-bar-track"><div id="factor-inflation" class="factor-bar-fill" style="width:0%"></div></div>
+                            <span class="factor-weight">Weight: 25%</span>
+                        </div>
+                        <div class="factor-card">
+                            <div class="factor-header">
+                                <span class="factor-name">Money Growth</span>
+                                <span class="factor-score" id="factor-growth-val2">--</span>
+                            </div>
+                            <div class="factor-bar-track"><div id="factor-growth" class="factor-bar-fill" style="width:0%"></div></div>
+                            <span class="factor-weight">Weight: 20%</span>
+                        </div>
+                        <div class="factor-card">
+                            <div class="factor-header">
+                                <span class="factor-name">Activity Level</span>
+                                <span class="factor-score" id="factor-activity-val2">--</span>
+                            </div>
+                            <div class="factor-bar-track"><div id="factor-activity" class="factor-bar-fill" style="width:0%"></div></div>
+                            <span class="factor-weight">Weight: 15%</span>
+                        </div>
+                        <div class="factor-card">
+                            <div class="factor-header">
+                                <span class="factor-name">Liquidity</span>
+                                <span class="factor-score" id="factor-liquidity-val2">--</span>
+                            </div>
+                            <div class="factor-bar-track"><div id="factor-liquidity" class="factor-bar-fill" style="width:0%"></div></div>
+                            <span class="factor-weight">Weight: 15%</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Economy Detail Charts -->
+                <section class="charts-row">
+                    <div class="card chart-card">
+                        <div class="card-header">
+                            <h3 class="card-title">Daily Transaction Volume</h3>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="volume-chart-2"></canvas>
+                        </div>
+                    </div>
+                    <div class="card chart-card">
+                        <div class="card-header">
+                            <h3 class="card-title">Wealth Distribution</h3>
+                        </div>
+                        <div class="chart-wrapper chart-sm">
+                            <canvas id="wealth-chart-2"></canvas>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Wealth & Snapshot Info -->
+                <section class="snapshot-row">
+                    <div class="card snapshot-card">
+                        <div class="card-header">
+                            <div class="card-icon green-icon-sm">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00D86C" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                            </div>
+                            <h3 class="card-title">Latest Snapshot</h3>
+                        </div>
+                        <div class="snapshot-grid" id="snapshot-details">
+                            <div class="snapshot-item"><span class="snap-label">Total Wealth</span><span class="snap-value" id="snap-total-wealth">--</span></div>
+                            <div class="snapshot-item"><span class="snap-label">Player Count</span><span class="snap-value" id="snap-player-count">--</span></div>
+                            <div class="snapshot-item"><span class="snap-label">Avg Balance</span><span class="snap-value" id="snap-avg-balance">--</span></div>
+                            <div class="snapshot-item"><span class="snap-label">Median Balance</span><span class="snap-value" id="snap-median-balance">--</span></div>
+                            <div class="snapshot-item"><span class="snap-label">Top 1% Share</span><span class="snap-value" id="snap-top1">--</span></div>
+                            <div class="snapshot-item"><span class="snap-label">Gini Index</span><span class="snap-value" id="snap-gini">--</span></div>
+                            <div class="snapshot-item"><span class="snap-label">Active Auctions</span><span class="snap-value" id="snap-auctions">--</span></div>
+                            <div class="snapshot-item"><span class="snap-label">Auction Value</span><span class="snap-value" id="snap-auction-value">--</span></div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-icon green-icon-sm">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00D86C" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                            </div>
+                            <h3 class="card-title">Top Traded Items</h3>
+                        </div>
+                        <div class="items-grid">
+                            <div class="items-column">
+                                <h4>Most Bought</h4>
+                                <ul id="top-bought-2" class="item-list">
+                                    <li class="item-empty">No data yet</li>
+                                </ul>
+                            </div>
+                            <div class="items-column">
+                                <h4>Most Sold</h4>
+                                <ul id="top-sold-2" class="item-list">
+                                    <li class="item-empty">No data yet</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- ═══ Tab Content: Security ═══ -->
+            <div id="tab-security" class="tab-content">
+                <section class="card security-card">
+                    <div class="card-header">
+                        <div class="card-icon" style="background: rgba(255,82,82,0.1);">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF5252" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        </div>
+                        <h3 class="card-title">Fraud Detection Monitor</h3>
+                        <span class="card-badge badge-green" id="fraud-count-badge">0 Active</span>
+                    </div>
+                    <div id="fraud-list-full" class="alert-list-full">
+                        <div class="empty-state">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            <span class="empty-title">All Clear</span>
+                            <span class="empty-desc">No fraud alerts detected. The system is monitoring transactions continuously.</span>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- ── Footer ── -->
+            <footer class="footer">
+                <span class="footer-left">Solidus Analytics Dashboard</span>
+                <span class="footer-right">Auto-refresh every 60s</span>
+            </footer>
+
+        </main>
     </div>
 
     <script src="js/app.js"></script>
