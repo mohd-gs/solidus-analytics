@@ -7,6 +7,8 @@ import com.solidus.analytics.premium.EconomyHealthScore;
 import com.solidus.analytics.premium.FraudDetector;
 import com.solidus.analytics.premium.DiscordWebhookNotifier;
 import com.solidus.analytics.premium.WeeklyReportGenerator;
+import com.solidus.analytics.util.AnalyticsPermissions;
+import com.solidus.analytics.util.PermissionChecker;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.context.CommandContext;
@@ -47,32 +49,32 @@ public class PremiumCommand {
         dispatcher.register(Commands.literal("analytics")
             // /analytics health
             .then(Commands.literal("health")
-                .requires(source -> source.hasPermission(2))
+                .requires(PermissionChecker.require(AnalyticsPermissions.HEALTH, 2))
                 .executes(context -> executeHealth(context, engine)))
 
             // /analytics fraud
             .then(Commands.literal("fraud")
-                .requires(source -> source.hasPermission(2))
+                .requires(PermissionChecker.require(AnalyticsPermissions.FRAUD, 2))
                 .executes(context -> executeFraudList(context, engine))
                 .then(Commands.literal("list")
                     .executes(context -> executeFraudList(context, engine)))
                 .then(Commands.literal("scan")
-                    .requires(source -> source.hasPermission(3))
+                    .requires(PermissionChecker.require(AnalyticsPermissions.FRAUD, 3))
                     .executes(context -> executeFraudScan(context, engine))))
 
             // /analytics license
             .then(Commands.literal("license")
-                .requires(source -> source.hasPermission(3))
+                .requires(PermissionChecker.require(AnalyticsPermissions.LICENSE, 3))
                 .executes(context -> executeLicenseStatus(context, engine)))
 
             // /analytics fingerprint — Shows server fingerprint for license purchase
             .then(Commands.literal("fingerprint")
-                .requires(source -> source.hasPermission(3))
+                .requires(PermissionChecker.require(AnalyticsPermissions.FINGERPRINT, 3))
                 .executes(context -> executeFingerprint(context, engine)))
 
             // /analytics report weekly — Force generate a weekly report
             .then(Commands.literal("report")
-                .requires(source -> source.hasPermission(2))
+                .requires(PermissionChecker.require(AnalyticsPermissions.HISTORY, 2))
                 .then(Commands.literal("weekly")
                     .executes(context -> executeWeeklyReport(context, engine))))
 
@@ -80,7 +82,7 @@ public class PremiumCommand {
 
             // /analytics dashboard status — Show dashboard status
             .then(Commands.literal("dashboard")
-                .requires(source -> source.hasPermission(3))
+                .requires(PermissionChecker.require(AnalyticsPermissions.DASHBOARD_MANAGE, 3))
                 .executes(context -> executeDashboardStatus(context, engine))
 
                 // /analytics dashboard setup <password>

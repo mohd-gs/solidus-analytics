@@ -2,6 +2,8 @@ package com.solidus.analytics.commands;
 
 import com.solidus.analytics.engine.AnalyticsEngine;
 import com.solidus.analytics.engine.InflationCalculator;
+import com.solidus.analytics.util.AnalyticsPermissions;
+import com.solidus.analytics.util.PermissionChecker;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.context.CommandContext;
@@ -33,7 +35,7 @@ public class InflationCommand {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher, AnalyticsEngine engine) {
         dispatcher.register(Commands.literal("inflation")
-            .requires(source -> source.hasPermission(2)) // OP level 2+
+            .requires(PermissionChecker.require(AnalyticsPermissions.INFLATION_CMD, 2))
             .executes(context -> executeInflation(context, engine, "24h"))
 
             // /inflation day

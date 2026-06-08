@@ -4,7 +4,9 @@ import com.solidus.analytics.engine.AnalyticsEngine;
 import com.solidus.analytics.engine.InflationCalculator;
 import com.solidus.analytics.engine.LiveMetricsTracker;
 import com.solidus.analytics.storage.AnalyticsDatabase;
+import com.solidus.analytics.util.AnalyticsPermissions;
 import com.solidus.analytics.util.GiniCoefficient;
+import com.solidus.analytics.util.PermissionChecker;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.context.CommandContext;
@@ -44,7 +46,7 @@ public class AnalyticsCommand {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher, AnalyticsEngine engine) {
         dispatcher.register(Commands.literal("analytics")
-            .requires(source -> source.hasPermission(2)) // OP level 2+
+            .requires(PermissionChecker.require(AnalyticsPermissions.DASHBOARD, 2))
             .executes(context -> executeDashboard(context, engine))
 
             // /analytics wealth
@@ -66,12 +68,12 @@ public class AnalyticsCommand {
 
             // /analytics snapshot (admin — force immediate snapshot)
             .then(Commands.literal("snapshot")
-                .requires(source -> source.hasPermission(3)) // OP level 3+
+                .requires(PermissionChecker.require(AnalyticsPermissions.SNAPSHOT, 3))
                 .executes(context -> executeSnapshot(context, engine)))
 
             // /analytics export (admin — export CSV)
             .then(Commands.literal("export")
-                .requires(source -> source.hasPermission(3)) // OP level 3+
+                .requires(PermissionChecker.require(AnalyticsPermissions.EXPORT, 3))
                 .executes(context -> executeExport(context, engine)))
 
             // /analytics history [days]
