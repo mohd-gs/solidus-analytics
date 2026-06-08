@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Solidus Analytics — Real-time Minecraft server economy dashboard">
+    <meta name="theme-color" content="#0A0A0A">
     <title>Solidus Analytics</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='2' width='28' height='28' rx='6' fill='%231E3D2F'/><path d='M16 6L26 12V20L16 26L6 20V12L16 6Z' fill='%2300D86C' opacity='0.9'/></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -13,7 +16,7 @@
 <body>
 
     <!-- ═══ Password Modal ═══ -->
-    <div id="password-modal" class="modal-overlay" style="display:none;">
+    <div id="password-modal" class="modal-overlay hidden">
         <div class="modal-card">
             <div class="modal-icon">
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -22,17 +25,17 @@
             </div>
             <h2>Dashboard Access</h2>
             <p>Enter the dashboard password to decrypt analytics data.</p>
-            <input type="password" id="password-input" placeholder="Password" autocomplete="off">
+            <input type="password" id="password-input" placeholder="Password" autocomplete="off" aria-label="Dashboard password">
             <button id="password-submit" onclick="decryptWithPassword()">Unlock Dashboard</button>
-            <p id="password-error" class="error-msg" style="display:none;">Incorrect password. Please try again.</p>
+            <p id="password-error" class="error-msg hidden">Incorrect password. Please try again.</p>
         </div>
     </div>
 
     <!-- ═══ Main Dashboard ═══ -->
-    <div id="dashboard" class="dashboard" style="display:none;">
+    <div id="dashboard" class="dashboard hidden">
 
         <!-- ── Top Navigation Bar ── -->
-        <nav class="topbar">
+        <nav class="topbar" role="navigation" aria-label="Main navigation">
             <div class="topbar-left">
                 <div class="logo">
                     <svg class="logo-icon" width="32" height="32" viewBox="0 0 32 32" fill="none">
@@ -42,10 +45,16 @@
                     </svg>
                     <span class="logo-text">Solidus <span class="accent">Analytics</span></span>
                 </div>
-                <div class="nav-links">
-                    <a href="#" class="nav-link active" onclick="switchTab('dashboard'); return false;">Dashboard</a>
-                    <a href="#" class="nav-link" onclick="switchTab('economy'); return false;">Economy</a>
-                    <a href="#" class="nav-link" onclick="switchTab('security'); return false;">Security</a>
+                <!-- Mobile hamburger -->
+                <button class="mobile-menu-btn" id="mobile-menu-btn" onclick="toggleMobileMenu()" aria-label="Toggle navigation menu" aria-expanded="false">
+                    <span class="hamburger-line"></span>
+                    <span class="hamburger-line"></span>
+                    <span class="hamburger-line"></span>
+                </button>
+                <div class="nav-links" id="nav-links" role="tablist">
+                    <a href="#" class="nav-link active" role="tab" aria-selected="true" onclick="switchTab('dashboard'); return false;">Dashboard</a>
+                    <a href="#" class="nav-link" role="tab" aria-selected="false" onclick="switchTab('economy'); return false;">Economy</a>
+                    <a href="#" class="nav-link" role="tab" aria-selected="false" onclick="switchTab('security'); return false;">Security</a>
                 </div>
             </div>
             <div class="topbar-right">
@@ -57,14 +66,24 @@
                         <span class="status-text">Offline</span>
                     </span>
                 </div>
-                <button class="topbar-btn" onclick="refreshData()" title="Refresh Data">
+                <button class="topbar-btn" onclick="refreshData()" title="Refresh Data" aria-label="Refresh data">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
                         <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
                     </svg>
                 </button>
+                <button class="topbar-btn" onclick="exportData()" title="Export Data" aria-label="Export dashboard data as JSON">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                </button>
             </div>
         </nav>
+
+        <!-- ── Mobile Menu Overlay ── -->
+        <div id="mobile-menu-overlay" class="mobile-menu-overlay" onclick="closeMobileMenu()"></div>
 
         <!-- ── Main Content Area ── -->
         <main class="main-content">
@@ -75,11 +94,32 @@
                     <span class="section-tag">DASHBOARD</span>
                     <h1 class="welcome-title">Economy Overview</h1>
                 </div>
-                <span id="last-update" class="last-update">Loading data...</span>
+                <div class="header-right">
+                    <span id="last-update" class="last-update">Loading data...</span>
+                    <span id="refresh-indicator" class="refresh-indicator hidden">
+                        <svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                        </svg>
+                        Refreshing...
+                    </span>
+                </div>
+            </div>
+
+            <!-- ═══ Loading Skeleton ═══ -->
+            <div id="loading-skeleton" class="loading-skeleton">
+                <section class="top-cards">
+                    <div class="card skeleton-card"><div class="skeleton-line w60"></div><div class="skeleton-line w40"></div><div class="skeleton-line w30"></div></div>
+                    <div class="card skeleton-card"><div class="skeleton-line w60"></div><div class="skeleton-line w40"></div><div class="skeleton-line w30"></div></div>
+                    <div class="card skeleton-card"><div class="skeleton-line w60"></div><div class="skeleton-line w40"></div><div class="skeleton-line w30"></div></div>
+                </section>
+                <section class="charts-row">
+                    <div class="card skeleton-card skeleton-chart"></div>
+                    <div class="card skeleton-card skeleton-chart"></div>
+                </section>
             </div>
 
             <!-- ═══ Top Row: 3 Summary Cards ═══ -->
-            <section class="top-cards">
+            <section class="top-cards hidden" id="summary-cards">
 
                 <!-- Economy Wallet Card -->
                 <div class="card summary-card">
@@ -227,13 +267,14 @@
                 <section class="bottom-row">
                     <div class="card">
                         <div class="card-header">
-                            <div class="card-icon" style="background: rgba(255,82,82,0.1);">
+                            <div class="card-icon icon-red">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF5252" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
                                     <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
                                 </svg>
                             </div>
                             <h3 class="card-title">Fraud Alerts</h3>
+                            <span class="card-badge badge-green" id="fraud-count-badge-mini">0</span>
                         </div>
                         <div id="fraud-list" class="alert-list">
                             <div class="empty-state">
@@ -289,7 +330,7 @@
                                 <span class="factor-name">Gini Inequality</span>
                                 <span class="factor-score" id="factor-gini-val2">--</span>
                             </div>
-                            <div class="factor-bar-track"><div id="factor-gini" class="factor-bar-fill" style="width:0%"></div></div>
+                            <div class="factor-bar-track"><div id="factor-gini" class="factor-bar-fill bar-zero"></div></div>
                             <span class="factor-weight">Weight: 25%</span>
                         </div>
                         <div class="factor-card">
@@ -297,7 +338,7 @@
                                 <span class="factor-name">Inflation Rate</span>
                                 <span class="factor-score" id="factor-inflation-val2">--</span>
                             </div>
-                            <div class="factor-bar-track"><div id="factor-inflation" class="factor-bar-fill" style="width:0%"></div></div>
+                            <div class="factor-bar-track"><div id="factor-inflation" class="factor-bar-fill bar-zero"></div></div>
                             <span class="factor-weight">Weight: 25%</span>
                         </div>
                         <div class="factor-card">
@@ -305,7 +346,7 @@
                                 <span class="factor-name">Money Growth</span>
                                 <span class="factor-score" id="factor-growth-val2">--</span>
                             </div>
-                            <div class="factor-bar-track"><div id="factor-growth" class="factor-bar-fill" style="width:0%"></div></div>
+                            <div class="factor-bar-track"><div id="factor-growth" class="factor-bar-fill bar-zero"></div></div>
                             <span class="factor-weight">Weight: 20%</span>
                         </div>
                         <div class="factor-card">
@@ -313,7 +354,7 @@
                                 <span class="factor-name">Activity Level</span>
                                 <span class="factor-score" id="factor-activity-val2">--</span>
                             </div>
-                            <div class="factor-bar-track"><div id="factor-activity" class="factor-bar-fill" style="width:0%"></div></div>
+                            <div class="factor-bar-track"><div id="factor-activity" class="factor-bar-fill bar-zero"></div></div>
                             <span class="factor-weight">Weight: 15%</span>
                         </div>
                         <div class="factor-card">
@@ -321,7 +362,7 @@
                                 <span class="factor-name">Liquidity</span>
                                 <span class="factor-score" id="factor-liquidity-val2">--</span>
                             </div>
-                            <div class="factor-bar-track"><div id="factor-liquidity" class="factor-bar-fill" style="width:0%"></div></div>
+                            <div class="factor-bar-track"><div id="factor-liquidity" class="factor-bar-fill bar-zero"></div></div>
                             <span class="factor-weight">Weight: 15%</span>
                         </div>
                     </div>
@@ -394,14 +435,65 @@
 
             <!-- ═══ Tab Content: Security ═══ -->
             <div id="tab-security" class="tab-content">
+
+                <!-- Security Overview Cards -->
+                <section class="security-overview">
+                    <div class="card security-stat-card">
+                        <div class="card-header">
+                            <div class="card-icon icon-red">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF5252" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </div>
+                            <h3 class="card-title">Active Alerts</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="big-number" id="security-active-count">0</div>
+                            <span class="big-label">FRAUD ALERTS</span>
+                        </div>
+                    </div>
+                    <div class="card security-stat-card">
+                        <div class="card-header">
+                            <div class="card-icon green-icon-sm">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00D86C" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            </div>
+                            <h3 class="card-title">Security Score</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="big-number score-excellent" id="security-score">100</div>
+                            <span class="big-label">PROTECTION LEVEL</span>
+                        </div>
+                    </div>
+                    <div class="card security-stat-card">
+                        <div class="card-header">
+                            <div class="card-icon green-icon-sm">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#448AFF" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                            </div>
+                            <h3 class="card-title">Monitoring</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="big-number" id="security-tx-monitored">0</div>
+                            <span class="big-label">TRANSACTIONS SCANNED</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Fraud Detail -->
                 <section class="card security-card">
                     <div class="card-header">
-                        <div class="card-icon" style="background: rgba(255,82,82,0.1);">
+                        <div class="card-icon icon-red">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF5252" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                         </div>
                         <h3 class="card-title">Fraud Detection Monitor</h3>
                         <span class="card-badge badge-green" id="fraud-count-badge">0 Active</span>
                     </div>
+
+                    <!-- Filter bar -->
+                    <div class="fraud-filter-bar">
+                        <button class="filter-btn active" data-severity="all" onclick="filterFraudAlerts('all')">All</button>
+                        <button class="filter-btn" data-severity="high" onclick="filterFraudAlerts('high')">High</button>
+                        <button class="filter-btn" data-severity="medium" onclick="filterFraudAlerts('medium')">Medium</button>
+                        <button class="filter-btn" data-severity="low" onclick="filterFraudAlerts('low')">Low</button>
+                    </div>
+
                     <div id="fraud-list-full" class="alert-list-full">
                         <div class="empty-state">
                             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -415,11 +507,14 @@
             <!-- ── Footer ── -->
             <footer class="footer">
                 <span class="footer-left">Solidus Analytics Dashboard</span>
-                <span class="footer-right">Auto-refresh every 60s</span>
+                <span class="footer-right" id="footer-refresh-text">Auto-refresh every 60s</span>
             </footer>
 
         </main>
     </div>
+
+    <!-- ═══ Toast Notification ═══ -->
+    <div id="toast-container" class="toast-container"></div>
 
     <script src="js/app.js"></script>
 </body>

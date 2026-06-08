@@ -7,8 +7,10 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.zip.GZIPOutputStream;
+import java.io.ByteArrayOutputStream;
 
 import fi.iki.elonen.NanoHTTPD;
 
@@ -33,6 +35,9 @@ import fi.iki.elonen.NanoHTTPD;
  *   <li>Password-protected via HTTP Basic Auth</li>
  *   <li>Only serves on the configured port (default: 9090)</li>
  *   <li>API endpoints require authentication</li>
+ *   <li>Security headers (CSP, X-Content-Type-Options, etc.)</li>
+ *   <li>GZIP compression for all text responses</li>
+ *   <li>Static resource caching to avoid re-reading JAR on every request</li>
  * </ul>
  *
  * @since 1.1.0
@@ -48,6 +53,30 @@ public class AnalyticsWebServer extends NanoHTTPD {
     /** Whether the server is currently running */
     private volatile boolean running = false;
 
+    /** Cached static resources (loaded once from JAR) */
+    private final Map<String, CachedResource> resourceCache = new HashMap<>();
+
+    /** Maximum age for static resources in seconds (1 hour) */
+    private static final int STATIC_CACHE_MAX_AGE = 3600;
+
+    /** Minimum response size to trigger GZIP compression (bytes) */
+    private static final int GZIP_THRESHOLD = 512;
+
+    /**
+     * Represents a cached static resource with its content and ETag.
+     */
+    private static class CachedResource {
+        final String content;
+        final String etag;
+        final String mimeType;
+
+        CachedResource(String content, String mimeType) {
+            this.content = content;
+            this.mimeType = mimeType;
+            this.etag = Integer.toHexString(content.hashCode());
+        }
+    }
+
     /**
      * Constructs a new AnalyticsWebServer.
      *
@@ -59,6 +88,25 @@ public class AnalyticsWebServer extends NanoHTTPD {
         super(port);
         this.engine = engine;
         this.passwordHash = passwordHash;
+        preloadResources();
+    }
+
+    /**
+     * Preloads all static resources from the JAR into memory.
+     * This avoids filesystem I/O on every request.
+     */
+    private void preloadResources() {
+        cacheResource("/web/index.html", "text/html");
+        cacheResource("/web/css/style.css", "text/css");
+        cacheResource("/web/js/app.js", "application/javascript");
+    }
+
+    private void cacheResource(String path, String mimeType) {
+        String content = loadResourceFromJar(path);
+        if (content != null) {
+            resourceCache.put(path, new CachedResource(content, mimeType));
+            SolidusAnalyticsMod.LOGGER.debug("Cached dashboard resource: {}", path);
+        }
     }
 
     /**
@@ -76,6 +124,7 @@ public class AnalyticsWebServer extends NanoHTTPD {
     public void stop() {
         super.stop();
         running = false;
+        resourceCache.clear();
         SolidusAnalyticsMod.LOGGER.info("Analytics web server stopped.");
     }
 
@@ -111,10 +160,13 @@ public class AnalyticsWebServer extends NanoHTTPD {
 
         // CORS preflight
         if (Method.OPTIONS.equals(method)) {
-            return newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "");
+            Response corsResp = newFixedLengthResponse(Response.Status.OK, MIME_PLAINTEXT, "");
+            addCorsHeaders(corsResp);
+            addSecurityHeaders(corsResp);
+            return corsResp;
         }
 
-        // Authenticate all requests (except static resources from same origin)
+        // Authenticate all requests
         if (!isAuthenticated(session)) {
             Response unauthorized = newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/html",
                 "<html><body><h1>401 Unauthorized</h1>"
@@ -122,14 +174,14 @@ public class AnalyticsWebServer extends NanoHTTPD {
                 + "Set up a password with /analytics dashboard setup &lt;password&gt;</p>"
                 + "</body></html>");
             unauthorized.addHeader("WWW-Authenticate", "Basic realm=\"Solidus Analytics\"");
+            addSecurityHeaders(unauthorized);
             return unauthorized;
         }
 
-        // Add CORS headers for authenticated requests
+        // Route and add security + CORS headers
         Response response = routeRequest(uri, session);
-        response.addHeader("Access-Control-Allow-Origin", "*");
-        response.addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-        response.addHeader("Access-Control-Allow-Headers", "Authorization");
+        addCorsHeaders(response);
+        addSecurityHeaders(response);
         return response;
     }
 
@@ -138,46 +190,141 @@ public class AnalyticsWebServer extends NanoHTTPD {
      */
     private Response routeRequest(String uri, IHTTPSession session) {
         return switch (uri) {
-            case "/", "/index.html" -> serveDashboardHtml();
-            case "/api/data" -> serveApiData();
-            case "/css/style.css" -> serveCss();
-            case "/js/app.js" -> serveJs();
+            case "/", "/index.html" -> serveDashboardHtml(session);
+            case "/api/data" -> serveApiData(session);
+            case "/css/style.css" -> serveCachedResource("/web/css/style.css", session);
+            case "/js/app.js" -> serveCachedResource("/web/js/app.js", session);
             default -> newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "404 Not Found");
         };
     }
 
     // ── Response Handlers ───────────────────────────────────
 
-    private Response serveDashboardHtml() {
-        String html = loadResource("/web/index.html");
-        if (html != null) {
-            return newFixedLengthResponse(Response.Status.OK, "text/html", html);
-        }
-        return newFixedLengthResponse(Response.Status.OK, "text/html",
-            "<html><body><h1>Solidus Analytics Dashboard</h1>"
-            + "<p>Dashboard files not found in JAR. Using API-only mode.</p>"
-            + "<p>API endpoint: <a href='/api/data'>/api/data</a></p>"
-            + "</body></html>");
+    private Response serveDashboardHtml(IHTTPSession session) {
+        return serveCachedResource("/web/index.html", session);
     }
 
-    private Response serveApiData() {
-        return newFixedLengthResponse(Response.Status.OK, "application/json", cachedData);
+    private Response serveApiData(IHTTPSession session) {
+        String data = cachedData;
+        return buildCompressedResponse(Response.Status.OK, "application/json", data, session);
     }
 
-    private Response serveCss() {
-        String css = loadResource("/web/css/style.css");
-        if (css != null) {
-            return newFixedLengthResponse(Response.Status.OK, "text/css", css);
+    /**
+     * Serves a cached static resource with ETag support.
+     * If the client sends a matching If-None-Match header,
+     * returns 304 Not Modified.
+     */
+    private Response serveCachedResource(String resourcePath, IHTTPSession session) {
+        CachedResource resource = resourceCache.get(resourcePath);
+        if (resource == null) {
+            // Fallback: load from JAR if not cached
+            String content = loadResourceFromJar(resourcePath);
+            if (content == null) {
+                return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "404");
+            }
+            String mimeType = guessMimeType(resourcePath);
+            resource = new CachedResource(content, mimeType);
+            resourceCache.put(resourcePath, resource);
         }
-        return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "404");
+
+        // ETag support: return 304 if client has cached version
+        String ifNoneMatch = session.getHeaders().get("if-none-match");
+        if (ifNoneMatch != null && ifNoneMatch.equals(resource.etag)) {
+            Response notModified = newFixedLengthResponse(Response.Status.NOT_MODIFIED, null, "");
+            notModified.addHeader("ETag", resource.etag);
+            notModified.addHeader("Cache-Control", "public, max-age=" + STATIC_CACHE_MAX_AGE);
+            return notModified;
+        }
+
+        Response response = buildCompressedResponse(Response.Status.OK, resource.mimeType, resource.content, session);
+        response.addHeader("ETag", resource.etag);
+        response.addHeader("Cache-Control", "public, max-age=" + STATIC_CACHE_MAX_AGE);
+        return response;
     }
 
-    private Response serveJs() {
-        String js = loadResource("/web/js/app.js");
-        if (js != null) {
-            return newFixedLengthResponse(Response.Status.OK, "application/javascript", js);
+    // ── Compression ────────────────────────────────────────
+
+    /**
+     * Builds a response with optional GZIP compression.
+     * Compresses the response if the client accepts GZIP and
+     * the content exceeds the compression threshold.
+     */
+    private Response buildCompressedResponse(Response.Status status, String mimeType, String content, IHTTPSession session) {
+        String acceptEncoding = session.getHeaders().get("accept-encoding");
+        boolean clientAcceptsGzip = acceptEncoding != null && acceptEncoding.contains("gzip");
+
+        if (clientAcceptsGzip && content.length() > GZIP_THRESHOLD) {
+            try {
+                byte[] compressed = gzipCompress(content.getBytes(StandardCharsets.UTF_8));
+                Response response = newFixedLengthResponse(status, mimeType, new ByteArrayInputStream(compressed), compressed.length);
+                response.addHeader("Content-Encoding", "gzip");
+                response.addHeader("Vary", "Accept-Encoding");
+                return response;
+            } catch (IOException e) {
+                // Fallback to uncompressed
+                SolidusAnalyticsMod.LOGGER.debug("GZIP compression failed, serving uncompressed", e);
+            }
         }
-        return newFixedLengthResponse(Response.Status.NOT_FOUND, MIME_PLAINTEXT, "404");
+
+        return newFixedLengthResponse(status, mimeType, content);
+    }
+
+    /**
+     * Compresses data using GZIP.
+     */
+    private static byte[] gzipCompress(byte[] data) throws IOException {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream(data.length / 4);
+        try (GZIPOutputStream gzip = new GZIPOutputStream(bos)) {
+            gzip.write(data);
+        }
+        return bos.toByteArray();
+    }
+
+    // ── Security Headers ───────────────────────────────────
+
+    /**
+     * Adds security-related HTTP headers to the response.
+     */
+    private void addSecurityHeaders(Response response) {
+        // Prevent MIME-type sniffing
+        response.addHeader("X-Content-Type-Options", "nosniff");
+
+        // Prevent clickjacking — only allow framing from same origin
+        response.addHeader("X-Frame-Options", "SAMEORIGIN");
+
+        // Enable browser XSS filter
+        response.addHeader("X-XSS-Protection", "1; mode=block");
+
+        // Content Security Policy — restrict resource loading
+        response.addHeader("Content-Security-Policy",
+            "default-src 'self'; "
+            + "script-src 'self' https://cdn.jsdelivr.net; "
+            + "style-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; "
+            + "font-src 'self' https://fonts.gstatic.com; "
+            + "connect-src 'self'; "
+            + "img-src 'self' data:; "
+            + "frame-ancestors 'self'");
+
+        // Referrer policy
+        response.addHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+
+        // Permissions policy — deny unnecessary browser features
+        response.addHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    }
+
+    // ── CORS Headers ───────────────────────────────────────
+
+    /**
+     * Adds CORS headers. Restricts to same origin by default.
+     * Only allows GET and OPTIONS methods (read-only dashboard).
+     */
+    private void addCorsHeaders(Response response) {
+        // Restrict CORS to same origin instead of wildcard
+        // This prevents unauthorized cross-origin access to the dashboard
+        response.addHeader("Access-Control-Allow-Origin", "sameorigin");
+        response.addHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+        response.addHeader("Access-Control-Allow-Headers", "Authorization");
+        response.addHeader("Access-Control-Max-Age", "86400"); // 24h preflight cache
     }
 
     // ── Authentication ──────────────────────────────────────
@@ -217,7 +364,7 @@ public class AnalyticsWebServer extends NanoHTTPD {
     /**
      * Loads a resource from the JAR file.
      */
-    private String loadResource(String path) {
+    private String loadResourceFromJar(String path) {
         try (InputStream is = getClass().getResourceAsStream(path)) {
             if (is == null) return null;
             return new String(is.readAllBytes(), StandardCharsets.UTF_8);
@@ -225,5 +372,18 @@ public class AnalyticsWebServer extends NanoHTTPD {
             SolidusAnalyticsMod.LOGGER.warn("Failed to load resource: {}", path);
             return null;
         }
+    }
+
+    /**
+     * Guesses the MIME type from a file path.
+     */
+    private String guessMimeType(String path) {
+        if (path.endsWith(".html")) return "text/html";
+        if (path.endsWith(".css")) return "text/css";
+        if (path.endsWith(".js")) return "application/javascript";
+        if (path.endsWith(".json")) return "application/json";
+        if (path.endsWith(".png")) return "image/png";
+        if (path.endsWith(".svg")) return "image/svg+xml";
+        return "application/octet-stream";
     }
 }

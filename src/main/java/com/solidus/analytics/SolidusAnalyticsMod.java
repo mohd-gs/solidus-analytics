@@ -9,6 +9,7 @@ import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.minecraft.server.MinecraftServer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,6 +54,9 @@ public class SolidusAnalyticsMod implements DedicatedServerModInitializer {
 
     private static volatile AnalyticsEngine analyticsEngine;
 
+    /** Reference to the Minecraft server instance, set on SERVER_STARTED */
+    private static volatile MinecraftServer serverInstance;
+
     @Override
     public void onInitializeServer() {
         LOGGER.info("Solidus Analytics is initializing...");
@@ -62,6 +66,9 @@ public class SolidusAnalyticsMod implements DedicatedServerModInitializer {
 
         // Register server started event — initialize engine after Solidus is ready
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            // Store server reference for dashboard and other components
+            serverInstance = server;
+
             // Resolve the config directory for this mod
             // Fix: Use FabricLoader API for reliable config path resolution.
             // Previous version used Path.of(".") which depends on the server's
@@ -101,6 +108,7 @@ public class SolidusAnalyticsMod implements DedicatedServerModInitializer {
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
             LOGGER.info("Solidus Analytics is shutting down...");
             analyticsEngine.shutdown();
+            serverInstance = null;
             LOGGER.info("Solidus Analytics shutdown complete. All data saved.");
         });
 
@@ -117,5 +125,14 @@ public class SolidusAnalyticsMod implements DedicatedServerModInitializer {
      */
     public static AnalyticsEngine getAnalyticsEngine() {
         return analyticsEngine;
+    }
+
+    /**
+     * Gets the Minecraft server instance.
+     *
+     * @return The server instance, or null if the server is not running
+     */
+    public static MinecraftServer getServer() {
+        return serverInstance;
     }
 }

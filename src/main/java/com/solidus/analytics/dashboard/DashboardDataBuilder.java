@@ -95,9 +95,9 @@ public class DashboardDataBuilder {
         LiveMetricsTracker metrics = engine.getLiveMetrics();
 
         json.append("\"liveMetrics\":{");
-        json.append("\"dailyVolume\":").append(metrics.getDailyVolumeCents()).append(",");
-        json.append("\"dailyTransactionCount\":").append(metrics.getDailyTransactionCount()).append(",");
-        json.append("\"activePlayerCount\":").append(metrics.getActivePlayerCount()).append(",");
+        json.append("\"dailyVolume\":").append(safeLong(metrics.getDailyVolumeCents())).append(",");
+        json.append("\"dailyTransactionCount\":").append(safeLong(metrics.getDailyTransactionCount())).append(",");
+        json.append("\"activePlayerCount\":").append(safeLong(metrics.getActivePlayerCount())).append(",");
 
         // Transactions by type
         Map<String, Long> byType = metrics.getTransactionsByType();
@@ -105,7 +105,7 @@ public class DashboardDataBuilder {
         boolean first = true;
         for (Map.Entry<String, Long> entry : byType.entrySet()) {
             if (!first) json.append(",");
-            json.append(escapeJson(entry.getKey())).append(":").append(entry.getValue());
+            json.append(escapeJson(entry.getKey())).append(":").append(safeLong(entry.getValue()));
             first = false;
         }
         json.append("}");
@@ -125,10 +125,10 @@ public class DashboardDataBuilder {
             json.append("\"type\":").append(escapeJson(snapshot.snapshotType())).append(",");
             json.append("\"totalWealth\":").append(snapshot.totalWealth()).append(",");
             json.append("\"playerCount\":").append(snapshot.playerCount()).append(",");
-            json.append("\"giniCoefficient\":").append(snapshot.giniCoefficient()).append(",");
+            json.append("\"giniCoefficient\":").append(safeDouble(snapshot.giniCoefficient())).append(",");
             json.append("\"avgBalance\":").append(snapshot.avgBalance()).append(",");
             json.append("\"medianBalance\":").append(snapshot.medianBalance()).append(",");
-            json.append("\"top1PercentShare\":").append(snapshot.top1PercentShare()).append(",");
+            json.append("\"top1PercentShare\":").append(safeDouble(snapshot.top1PercentShare())).append(",");
             json.append("\"moneySupply\":").append(snapshot.moneySupply()).append(",");
             json.append("\"auctionActiveListings\":").append(snapshot.auctionActiveListings()).append(",");
             json.append("\"auctionTotalValue\":").append(snapshot.auctionTotalValue());
@@ -151,11 +151,11 @@ public class DashboardDataBuilder {
             json.append("{");
             json.append("\"moneySupplyCents\":").append(report.moneySupplyCents).append(",");
             json.append("\"goodsValueCents\":").append(report.goodsValueCents).append(",");
-            json.append("\"moneyToGoodsRatio\":").append(report.moneyToGoodsRatio).append(",");
+            json.append("\"moneyToGoodsRatio\":").append(safeDouble(report.moneyToGoodsRatio)).append(",");
             json.append("\"status\":").append(escapeJson(report.status)).append(",");
-            json.append("\"inflationRate24h\":").append(report.inflationRate24h != null ? report.inflationRate24h : "null").append(",");
-            json.append("\"inflationRate7d\":").append(report.inflationRate7d != null ? report.inflationRate7d : "null").append(",");
-            json.append("\"inflationRate30d\":").append(report.inflationRate30d != null ? report.inflationRate30d : "null");
+            json.append("\"inflationRate24h\":").append(safeDouble(report.inflationRate24h)).append(",");
+            json.append("\"inflationRate7d\":").append(safeDouble(report.inflationRate7d)).append(",");
+            json.append("\"inflationRate30d\":").append(safeDouble(report.inflationRate30d));
             json.append("}");
         }
     }
@@ -217,7 +217,7 @@ public class DashboardDataBuilder {
             json.append("\"transactionCount\":").append(day.transactionCount()).append(",");
             json.append("\"transactionVolume\":").append(day.transactionVolume()).append(",");
             json.append("\"activePlayers\":").append(day.activePlayers()).append(",");
-            json.append("\"inflationRate\":").append(day.inflationRate() != null ? day.inflationRate() : "null");
+            json.append("\"inflationRate\":").append(safeDouble(day.inflationRate()));
             json.append("}");
         }
         json.append("]");
@@ -259,7 +259,16 @@ public class DashboardDataBuilder {
 
     private static String getServerName(AnalyticsEngine engine) {
         try {
-            // Try to get the server MOTD as a name
+            // Access the Minecraft server instance for the actual server MOTD
+            var minecraftServer = com.solidus.analytics.SolidusAnalyticsMod.getServer();
+            if (minecraftServer != null) {
+                String name = minecraftServer.getServerMotd();
+                if (name != null && !name.isBlank()) {
+                    // Strip Minecraft color codes (e.g., "\u00A7aServer Name" or "&aServer Name")
+                    String cleaned = name.replaceAll("[\u00A7&][0-9a-fk-or]", "").trim();
+                    if (!cleaned.isBlank()) return cleaned;
+                }
+            }
             return "Solidus Server";
         } catch (Exception e) {
             return "Unknown Server";
@@ -268,21 +277,28 @@ public class DashboardDataBuilder {
 
     /**
      * Escapes a string for JSON.
+     * Handles null, control characters, and special characters safely.
      */
     static String escapeJson(String value) {
         if (value == null) return "null";
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder(value.length() + 8);
         sb.append("\"");
-        for (char c : value.toCharArray()) {
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
             switch (c) {
                 case '"' -> sb.append("\\\"");
                 case '\\' -> sb.append("\\\\");
                 case '\n' -> sb.append("\\n");
                 case '\r' -> sb.append("\\r");
                 case '\t' -> sb.append("\\t");
+                case '\b' -> sb.append("\\b");
+                case '\f' -> sb.append("\\f");
                 default -> {
                     if (c < 0x20) {
                         sb.append(String.format("\\u%04x", (int) c));
+                    } else if (Character.isSurrogate(c)) {
+                        // Skip unpaired surrogates (broken Unicode)
+                        sb.append("\\ufffd");
                     } else {
                         sb.append(c);
                     }
@@ -291,5 +307,21 @@ public class DashboardDataBuilder {
         }
         sb.append("\"");
         return sb.toString();
+    }
+
+    /**
+     * Safely converts a Long to a string for JSON, handling null values.
+     */
+    private static String safeLong(Long value) {
+        return value != null ? value.toString() : "0";
+    }
+
+    /**
+     * Safely converts a Double to a string for JSON, handling null and NaN values.
+     */
+    private static String safeDouble(Double value) {
+        if (value == null) return "null";
+        if (Double.isNaN(value) || Double.isInfinite(value)) return "null";
+        return value.toString();
     }
 }
