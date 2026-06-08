@@ -172,6 +172,29 @@ input:focus-visible {
     margin-top: 0.75rem;
 }
 
+/* ── Demo Hint ──────────────────────────────────────────── */
+
+.demo-hint {
+    font-size: 0.82rem;
+    color: var(--accent-blue);
+    background: rgba(68, 138, 255, 0.08);
+    border: 1px solid rgba(68, 138, 255, 0.15);
+    border-radius: var(--radius-xs);
+    padding: 0.6rem 0.85rem;
+    margin-bottom: 1rem;
+    line-height: 1.5;
+}
+
+.demo-hint strong {
+    color: var(--accent);
+    font-weight: 700;
+    background: var(--accent-dim);
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.5px;
+}
+
 /* ── Top Navigation Bar ────────────────────────────────── */
 
 .topbar {

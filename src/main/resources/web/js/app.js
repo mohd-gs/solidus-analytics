@@ -9,6 +9,7 @@ let dashboardData = null;
 let chartInstances = {};  // Chart instance registry by canvas ID
 let updateInterval = null;
 let isEmbedded = false;
+let isStandalone = false; // file:// protocol — no server available
 let dataPassword = null;
 let activeTab = 'dashboard';
 let isRefreshing = false;
@@ -58,9 +59,19 @@ Chart.defaults.color = COLORS.textMuted;
 // ── Initialization ───────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
-    isEmbedded = window.location.port && window.location.port !== '';
-    loadData();
-    updateInterval = setInterval(loadData, 60000);
+    const protocol = window.location.protocol;
+    isStandalone = protocol === 'file:';
+    isEmbedded = !isStandalone && window.location.port && window.location.port !== '';
+
+    if (isStandalone) {
+        // No server available — show password modal directly for demo mode
+        hideSkeleton();
+        showPasswordModal(null);
+        // Stop auto-refresh interval in standalone mode
+    } else {
+        loadData();
+        updateInterval = setInterval(loadData, 60000);
+    }
 
     document.getElementById('password-input').addEventListener('keydown', (e) => {
         if (e.key === 'Enter') decryptWithPassword();
@@ -183,6 +194,11 @@ async function loadData() {
 }
 
 function refreshData() {
+    // Standalone/demo mode: no data refresh available
+    if (isStandalone || dataPassword === 'test') {
+        showToast('Demo mode — data does not refresh.', 'info');
+        return;
+    }
     // Rate limiting: prevent spamming refresh
     const now = Date.now();
     if (now - lastRefreshTime < REFRESH_COOLDOWN_MS) {
@@ -246,6 +262,12 @@ function showPasswordModal(encrypted) {
     document.getElementById('password-modal').classList.remove('hidden');
     document.getElementById('dashboard').classList.add('hidden');
     document.getElementById('password-input').focus();
+
+    // Show demo hint when running standalone (file://) or no encrypted payload
+    const demoHint = document.getElementById('demo-hint');
+    if (demoHint && (isStandalone || !encrypted)) {
+        demoHint.classList.remove('hidden');
+    }
 }
 
 async function decryptWithPassword() {
@@ -266,6 +288,15 @@ async function decryptWithPassword() {
         updateUI();
         updateConnectionStatus(true);
         showToast('Demo mode — showing sample data.', 'info');
+        return;
+    }
+
+    // ── Standalone mode: no encrypted payload available ──
+    if (!encryptedPayload) {
+        errorEl.textContent = 'No server connection. Type "test" for demo preview.';
+        errorEl.classList.remove('hidden');
+        passwordInput.value = '';
+        passwordInput.focus();
         return;
     }
 
@@ -312,6 +343,7 @@ async function decryptWithPassword() {
 
     } catch (error) {
         console.error('Decryption failed:', error);
+        errorEl.textContent = 'Incorrect password. Please try again.';
         errorEl.classList.remove('hidden');
         passwordInput.value = '';
         passwordInput.focus();
@@ -871,7 +903,7 @@ function estimateQuintileShares(gini) {
 }
 
 function buildRatioChart(ctx, data) {
-    if (!data.inflation || data.inflation.moneyToGoodsRatio < 0) return null;
+    if (!data.inflation || data.inflation.moneyToGoodsRatio == null || data.inflation.moneyToGoodsRatio < 0) return null;
 
     const ratio = data.inflation.moneyToGoodsRatio;
     const maxRatio = Math.max(ratio * 1.5, 15);
@@ -1143,7 +1175,7 @@ function generateDemoData() {
         },
         latestSnapshot: {
             timestamp: now - 1800000,
-            snapshotType: "periodic",
+            type: "periodic",
             totalWealth: 125000000,
             playerCount: 156,
             giniCoefficient: 0.42,

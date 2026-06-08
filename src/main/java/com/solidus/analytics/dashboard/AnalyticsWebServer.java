@@ -50,6 +50,9 @@ public class AnalyticsWebServer extends NanoHTTPD {
     /** Cached JSON data for quick API responses */
     private volatile String cachedData = "{}";
 
+    /** Demo JSON data returned when "test" is used as auth code */
+    private static final String DEMO_DATA = buildDemoJson();
+
     /** Whether the server is currently running */
     private volatile boolean running = false;
 
@@ -205,7 +208,9 @@ public class AnalyticsWebServer extends NanoHTTPD {
     }
 
     private Response serveApiData(IHTTPSession session) {
-        String data = cachedData;
+        // Check if this is a demo-mode request (password = "test")
+        boolean isDemo = isDemoRequest(session);
+        String data = isDemo ? DEMO_DATA : cachedData;
         return buildCompressedResponse(Response.Status.OK, "application/json", data, session);
     }
 
@@ -331,6 +336,7 @@ public class AnalyticsWebServer extends NanoHTTPD {
 
     /**
      * Checks if the request has valid HTTP Basic Auth credentials.
+     * Accepts the configured password hash OR "test" for demo mode.
      */
     private boolean isAuthenticated(IHTTPSession session) {
         // If no password is set, allow all access (first-time setup)
@@ -353,6 +359,11 @@ public class AnalyticsWebServer extends NanoHTTPD {
             int colonIndex = decoded.indexOf(':');
             String password = colonIndex >= 0 ? decoded.substring(colonIndex + 1) : decoded;
 
+            // Demo mode: accept "test" as a valid auth code
+            if ("test".equalsIgnoreCase(password)) {
+                return true;
+            }
+
             return DashboardEncryption.verifyPassword(password.toCharArray(), passwordHash);
         } catch (Exception e) {
             return false;
@@ -360,6 +371,24 @@ public class AnalyticsWebServer extends NanoHTTPD {
     }
 
     // ── Resource Loading ────────────────────────────────────
+
+    /**
+     * Checks if the request credentials indicate demo mode.
+     */
+    private boolean isDemoRequest(IHTTPSession session) {
+        String authHeader = session.getHeaders().get("authorization");
+        if (authHeader == null || !authHeader.startsWith("Basic ")) return false;
+        try {
+            String decoded = new String(
+                java.util.Base64.getDecoder().decode(authHeader.substring(6)),
+                StandardCharsets.UTF_8);
+            int colonIndex = decoded.indexOf(':');
+            String password = colonIndex >= 0 ? decoded.substring(colonIndex + 1) : decoded;
+            return "test".equalsIgnoreCase(password);
+        } catch (Exception e) {
+            return false;
+        }
+    }
 
     /**
      * Loads a resource from the JAR file.
@@ -385,5 +414,115 @@ public class AnalyticsWebServer extends NanoHTTPD {
         if (path.endsWith(".png")) return "image/png";
         if (path.endsWith(".svg")) return "image/svg+xml";
         return "application/octet-stream";
+    }
+
+    /**
+     * Builds a static demo JSON payload for preview mode.
+     * All numbers are fictional — no real server data is used.
+     */
+    private static String buildDemoJson() {
+        long now = System.currentTimeMillis();
+        long dayMs = 86400000L;
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("{");
+
+        // Timestamp
+        sb.append("\"timestamp\":").append(now).append(",");
+
+        // Server
+        sb.append("\"server\":{\"name\":\"Demo Server\",\"fingerprint\":\"demo-preview\"},");
+
+        // Live metrics
+        sb.append("\"liveMetrics\":{");
+        sb.append("\"dailyVolume\":850000,");
+        sb.append("\"dailyTransactionCount\":247,");
+        sb.append("\"activePlayerCount\":42,");
+        sb.append("\"transactionsByType\":{");
+        sb.append("\"SHOP_BUY\":142,\"SHOP_SELL\":68,\"AUCTION_BID\":22,\"PLAYER_TRADE\":15}");
+        sb.append("},");
+
+        // Latest snapshot
+        sb.append("\"latestSnapshot\":{");
+        sb.append("\"timestamp\":").append(now - 1800000).append(",");
+        sb.append("\"type\":\"periodic\",");
+        sb.append("\"totalWealth\":125000000,");
+        sb.append("\"playerCount\":156,");
+        sb.append("\"giniCoefficient\":0.42,");
+        sb.append("\"avgBalance\":801280,");
+        sb.append("\"medianBalance\":350000,");
+        sb.append("\"top1PercentShare\":0.18,");
+        sb.append("\"moneySupply\":125000000,");
+        sb.append("\"auctionActiveListings\":34,");
+        sb.append("\"auctionTotalValue\":45000000");
+        sb.append("},");
+
+        // Inflation
+        sb.append("\"inflation\":{");
+        sb.append("\"moneySupplyCents\":125000000,");
+        sb.append("\"goodsValueCents\":38000000,");
+        sb.append("\"moneyToGoodsRatio\":3.3,");
+        sb.append("\"status\":\"MODERATE\",");
+        sb.append("\"inflationRate24h\":2.8,");
+        sb.append("\"inflationRate7d\":4.1,");
+        sb.append("\"inflationRate30d\":6.3");
+        sb.append("},");
+
+        // Health score
+        sb.append("\"healthScore\":{");
+        sb.append("\"overallScore\":72,");
+        sb.append("\"grade\":\"B\",");
+        sb.append("\"summary\":\"Economy is stable with moderate inflation. Wealth distribution is slightly unequal.\",");
+        sb.append("\"giniScore\":65,");
+        sb.append("\"inflationScore\":70,");
+        sb.append("\"moneyGrowthScore\":78,");
+        sb.append("\"activityScore\":85,");
+        sb.append("\"liquidityScore\":62");
+        sb.append("},");
+
+        // Fraud alerts
+        sb.append("\"fraudAlerts\":[");
+        sb.append("{\"timestamp\":").append(now - 1200000).append(",\"type\":\"RAPID_TRANSACTIONS\",\"playerName\":\"xNotch\",\"severity\":\"HIGH\",\"description\":\"47 transactions in 30 seconds — possible bot\"},");
+        sb.append("{\"timestamp\":").append(now - 3600000).append(",\"type\":\"UNUSUAL_VOLUME\",\"playerName\":\"DiamondKing\",\"severity\":\"MEDIUM\",\"description\":\"Sold 640 diamonds in 1 hour — 12x above average\"},");
+        sb.append("{\"timestamp\":").append(now - 7200000).append(",\"type\":\"PRICE_MANIPULATION\",\"playerName\":\"TradeMaster99\",\"severity\":\"LOW\",\"description\":\"Repeated buy/sell pattern on iron ingots\"}");
+        sb.append("],");
+
+        // Daily history (14 days)
+        sb.append("\"dailyHistory\":[");
+        java.util.Random rng = new java.util.Random(42); // Fixed seed for consistent demo
+        for (int i = 13; i >= 0; i--) {
+            if (i < 13) sb.append(",");
+            long dayTime = now - (long) i * dayMs;
+            java.time.LocalDate date = java.time.Instant.ofEpochMilli(dayTime)
+                .atZone(java.time.ZoneOffset.UTC).toLocalDate();
+            sb.append("{");
+            sb.append("\"date\":\"").append(date).append("\",");
+            sb.append("\"transactionCount\":").append(150 + rng.nextInt(120)).append(",");
+            sb.append("\"transactionVolume\":").append(500000 + rng.nextInt(400000)).append(",");
+            sb.append("\"activePlayers\":").append(25 + rng.nextInt(20)).append(",");
+            sb.append("\"inflationRate\":").append(String.format("%.2f", 1.5 + rng.nextDouble() * 4));
+            sb.append("}");
+        }
+        sb.append("],");
+
+        // Top items
+        sb.append("\"topItems\":{");
+        sb.append("\"bought\":[");
+        sb.append("{\"item\":\"Diamond Pickaxe\",\"quantity\":89},");
+        sb.append("{\"item\":\"Iron Ingot\",\"quantity\":1240},");
+        sb.append("{\"item\":\"Oak Planks\",\"quantity\":3200},");
+        sb.append("{\"item\":\"Cooked Steak\",\"quantity\":560},");
+        sb.append("{\"item\":\"Torch\",\"quantity\":1800}");
+        sb.append("],");
+        sb.append("\"sold\":[");
+        sb.append("{\"item\":\"Cobblestone\",\"quantity\":8900},");
+        sb.append("{\"item\":\"Wheat\",\"quantity\":2100},");
+        sb.append("{\"item\":\"Raw Iron\",\"quantity\":780},");
+        sb.append("{\"item\":\"Coal\",\"quantity\":1500},");
+        sb.append("{\"item\":\"String\",\"quantity\":420}");
+        sb.append("]}");
+
+        sb.append("}");
+        return sb.toString();
     }
 }
