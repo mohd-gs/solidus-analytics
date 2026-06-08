@@ -247,10 +247,14 @@ public class LiveMetricsTracker {
         }
 
         String dbUrl = "jdbc:sqlite:" + economyDbPath;
+        // Fix: Use timestamp >= ? instead of timestamp > ? to avoid missing transactions
+        // that share the same millisecond as the last polled timestamp. The small cost
+        // of potentially re-processing a few duplicate rows (which only increment counters)
+        // is far preferable to silently losing transactions.
         String sql = """
             SELECT timestamp, type, player_uuid, player_name, amount, item_material, item_quantity
             FROM transaction_log
-            WHERE timestamp > ?
+            WHERE timestamp >= ?
             ORDER BY timestamp ASC
         """;
 

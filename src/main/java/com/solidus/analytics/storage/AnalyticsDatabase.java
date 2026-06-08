@@ -219,6 +219,10 @@ public class AnalyticsDatabase {
      */
     public void shutdown() {
         if (initialized) {
+            // First mark as not initialized so new submissions are rejected
+            initialized = false;
+
+            // Shut down the executor and wait for pending tasks to complete
             asyncExecutor.shutdown();
             try {
                 if (!asyncExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
@@ -230,6 +234,7 @@ public class AnalyticsDatabase {
                 Thread.currentThread().interrupt();
             }
 
+            // Now close the connection AFTER all executor tasks have finished
             if (persistentConnection != null) {
                 try {
                     persistentConnection.close();
@@ -237,6 +242,7 @@ public class AnalyticsDatabase {
                 } catch (SQLException e) {
                     SolidusAnalyticsMod.LOGGER.error("Failed to close analytics database connection", e);
                 }
+                persistentConnection = null;
             }
         }
         initialized = false;

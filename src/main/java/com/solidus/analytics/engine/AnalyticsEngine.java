@@ -287,6 +287,10 @@ public class AnalyticsEngine {
     }
 
     public AnalyticsConfig getConfig() {
+        // Note: config can be null before initialize() completes, but once set it
+        // remains non-null. No ensureInitialized() check here because config is
+        // accessed during the initialization sequence itself (e.g., premium setup
+        // reads config values). Callers after init will always get a valid reference.
         return config;
     }
 

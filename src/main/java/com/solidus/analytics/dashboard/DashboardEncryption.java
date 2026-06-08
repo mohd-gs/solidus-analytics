@@ -274,11 +274,19 @@ public class DashboardEncryption {
 
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            digest.update(new String(password).getBytes(StandardCharsets.UTF_8));
-            digest.update(salt);
-            byte[] hash = digest.digest();
+            // Convert char[] to bytes directly without creating an intermediate String,
+            // to avoid leaving the password in the String pool.
+            byte[] passwordBytes = charsToBytes(password);
+            try {
+                digest.update(passwordBytes);
+                digest.update(salt);
+                byte[] hash = digest.digest();
 
-            return bytesToHex(salt) + ":" + bytesToHex(hash);
+                return bytesToHex(salt) + ":" + bytesToHex(hash);
+            } finally {
+                // Clear the temporary byte array
+                java.util.Arrays.fill(passwordBytes, (byte) 0);
+            }
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-256 not available", e);
         }
@@ -300,18 +308,25 @@ public class DashboardEncryption {
 
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            digest.update(new String(password).getBytes(StandardCharsets.UTF_8));
-            digest.update(salt);
-            byte[] actualHash = digest.digest();
+            // Convert char[] to bytes directly without creating an intermediate String,
+            // to avoid leaving the password in the String pool.
+            byte[] passwordBytes = charsToBytes(password);
+            try {
+                digest.update(passwordBytes);
+                digest.update(salt);
+                byte[] actualHash = digest.digest();
 
-            // Constant-time comparison
-            if (actualHash.length != expectedHash.length) return false;
-            int result = 0;
-            for (int i = 0; i < actualHash.length; i++) {
-                result |= actualHash[i] ^ expectedHash[i];
+                // Constant-time comparison
+                if (actualHash.length != expectedHash.length) return false;
+                int result = 0;
+                for (int i = 0; i < actualHash.length; i++) {
+                    result |= actualHash[i] ^ expectedHash[i];
+                }
+                return result == 0;
+            } finally {
+                // Clear the temporary byte array
+                java.util.Arrays.fill(passwordBytes, (byte) 0);
             }
-            return result == 0;
-
         } catch (NoSuchAlgorithmException e) {
             return false;
         }
@@ -335,5 +350,37 @@ public class DashboardEncryption {
                 + Character.digit(hex.charAt(i + 1), 16));
         }
         return data;
+    }
+
+    /**
+     * Converts a char[] to a UTF-8 byte[] without creating an intermediate String.
+     * This prevents the password from being interned in the String pool,
+     * where it could linger until garbage collection.
+     *
+     * @param chars The characters to convert
+     * @return The UTF-8 encoded bytes
+     */
+    private static byte[] charsToBytes(char[] chars) {
+        // Allocate worst-case: 3 bytes per char for UTF-8
+        byte[] result = new byte[chars.length * 3];
+        int outLen = 0;
+        for (char c : chars) {
+            if (c < 0x80) {
+                result[outLen++] = (byte) c;
+            } else if (c < 0x800) {
+                result[outLen++] = (byte) (0xC0 | (c >> 6));
+                result[outLen++] = (byte) (0x80 | (c & 0x3F));
+            } else {
+                result[outLen++] = (byte) (0xE0 | (c >> 12));
+                result[outLen++] = (byte) (0x80 | ((c >> 6) & 0x3F));
+                result[outLen++] = (byte) (0x80 | (c & 0x3F));
+            }
+        }
+        // Return a correctly-sized copy
+        byte[] trimmed = new byte[outLen];
+        System.arraycopy(result, 0, trimmed, 0, outLen);
+        // Clear the temporary oversized buffer
+        java.util.Arrays.fill(result, (byte) 0);
+        return trimmed;
     }
 }

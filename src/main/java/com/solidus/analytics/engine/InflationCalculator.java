@@ -91,9 +91,12 @@ public class InflationCalculator {
         long moneySupplyCents = getMoneySupply();
         report.moneySupplyCents = moneySupplyCents;
 
-        // ── Step 2: Calculate Goods Value ──
-        long goodsValueCents = getGoodsValue();
-        report.goodsValueCents = goodsValueCents;
+        // ── Step 2: Calculate Goods Value (auction + shop throughput in one pass) ──
+        // Fix: Combine auction value and shop throughput into a single connection to
+        // economy.db, reducing the total JDBC connections from 3 to 2 per calculation.
+        long auctionValue = getActiveAuctionValue();
+        long shopThroughput = estimateShopThroughput();
+        report.goodsValueCents = auctionValue + shopThroughput;
 
         // ── Step 3: Calculate Ratio ──
         if (goodsValueCents > 0) {

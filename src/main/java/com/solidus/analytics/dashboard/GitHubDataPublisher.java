@@ -7,10 +7,10 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * GitHubDataPublisher - Pushes analytics data to a GitHub repository
@@ -49,8 +49,8 @@ public class GitHubDataPublisher {
 
     // ── State ───────────────────────────────────────────────
 
-    /** The last known SHA of the data file on GitHub (for conflict avoidance) */
-    private final AtomicReference<String> lastKnownSha = new AtomicReference<>(null);
+    /** Cache of file SHA hashes keyed by file path (for conflict avoidance) */
+    private final ConcurrentHashMap<String, String> shaCache = new ConcurrentHashMap<>();
 
     /** Dedicated single-thread executor for GitHub API calls */
     private final ExecutorService githubExecutor;
@@ -212,8 +212,8 @@ public class GitHubDataPublisher {
         int responseCode = putFileContent(filePath, content, sha);
 
         if (responseCode == 200 || responseCode == 201) {
-            // Success — update cached SHA
-            lastKnownSha.set(null); // Will be re-fetched next time
+            // Success — invalidate cached SHA (will be re-fetched next time)
+            shaCache.remove(filePath);
             SolidusAnalyticsMod.LOGGER.debug("Successfully published {} to GitHub Pages.", filePath);
         } else if (responseCode == 409) {
             // Conflict — another update happened between our GET and PUT
@@ -225,7 +225,7 @@ public class GitHubDataPublisher {
             Thread.sleep(delay);
 
             // Invalidate cached SHA and retry
-            lastKnownSha.set(null);
+            shaCache.remove(filePath);
             publishWithRetry(filePath, content, retries - 1);
         } else if (responseCode == 404 && sha == null) {
             // File doesn't exist yet — create it without SHA
@@ -246,8 +246,8 @@ public class GitHubDataPublisher {
      * @return The SHA hash, or null if the file doesn't exist (404)
      */
     private String getFileSha(String filePath) {
-        // Use cached SHA if available
-        String cached = lastKnownSha.get();
+        // Use cached SHA if available for this specific file
+        String cached = shaCache.get(filePath);
         if (cached != null) return cached;
 
         String url = String.format("https://api.github.com/repos/%s/%s/contents/%s?ref=%s",
@@ -269,7 +269,7 @@ public class GitHubDataPublisher {
                 // Parse the SHA from the JSON response
                 String sha = extractJsonField(response, "sha");
                 if (sha != null) {
-                    lastKnownSha.set(sha);
+                    shaCache.put(filePath, sha);
                 }
                 return sha;
             } else if (responseCode == 404) {
